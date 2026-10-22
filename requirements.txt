@@ -1,0 +1,4 @@
+# Installed into a venv on Zaratan's module Python 3.10 (see README: Zaratan setup).
+# torch is installed separately from the CUDA wheel index by scripts/setup_env.sh.
+numpy==1.26.4
+pandas==2.2.3
