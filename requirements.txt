@@ -2,3 +2,4 @@
 # torch is installed separately from the CUDA wheel index by scripts/setup_env.sh.
 numpy==1.26.4
 pandas==2.2.3
+pytest==8.3.4
