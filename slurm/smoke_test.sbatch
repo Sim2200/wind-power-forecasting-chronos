@@ -8,10 +8,9 @@
 #SBATCH --gpus=a100_1g.5gb:1
 #SBATCH --output=slurm-%j.out
 
-source /etc/profile
-module load python/3.10.10
-unset PYTHONPATH
-source "${ENV_DIR:-$HOME/envs/dl612env}/bin/activate"
+cd "$SLURM_SUBMIT_DIR"
+source scripts/env.sh
+activate_env
 
 nvidia-smi
 python -c "import torch; print('torch', torch.__version__, '| cuda', torch.version.cuda, '| available', torch.cuda.is_available(), '|', torch.cuda.get_device_name(0))"

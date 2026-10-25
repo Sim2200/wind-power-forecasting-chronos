@@ -11,6 +11,7 @@ Official ETTh1 setting: L=336, P=16, stride 8 (N=42), D=16, 4 heads, d_ff=128,
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import torch
@@ -18,6 +19,8 @@ import torch.nn.functional as F
 from torch import nn
 
 from wpf.models.layers import Patcher, RevIN, merge_channels, num_patches, split_channels
+
+_LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -34,7 +37,7 @@ class PatchTSTConfig:
     dropout: float = 0.3
     head_dropout: float = 0.0
     revin: bool = True
-    revin_affine: bool = False  # the official ETTh1 runs use --affine 0
+    revin_affine: bool = False  # the official ETTh1 runs use `--affine 0`
 
 
 class MultiheadAttention(nn.Module):
@@ -57,10 +60,12 @@ class MultiheadAttention(nn.Module):
         k = self.w_k(x).view(b, n, self.n_heads, self.d_head).permute(0, 2, 3, 1)  # (B, h, d, N)
         v = self.w_v(x).view(b, n, self.n_heads, self.d_head).transpose(1, 2)
         scores = torch.matmul(q, k) * self.scale  # (B, h, N, N)
+        # Residual attention: the previous layer's pre-softmax scores are added to this layer's.
         if prev_scores is not None:
             scores = scores + prev_scores
         out = torch.matmul(F.softmax(scores, dim=-1), v)  # (B, h, N, d)
         out = out.transpose(1, 2).reshape(b, n, -1)
+        # The pre-softmax scores go back out so the next layer can add them.
         return self.to_out(out), scores
 
 
@@ -97,6 +102,7 @@ class EncoderLayer(nn.Module):
 class PatchTST(nn.Module):
     def __init__(self, cfg: PatchTSTConfig):
         super().__init__()
+        _LOG.debug("cfg=%s", cfg)
         self.cfg = cfg
         self.revin = RevIN(cfg.n_vars, affine=cfg.revin_affine) if cfg.revin else None
         self.patcher = Patcher(cfg.patch_len, cfg.stride)
@@ -107,9 +113,11 @@ class PatchTST(nn.Module):
         self.layers = nn.ModuleList(
             EncoderLayer(cfg.d_model, cfg.n_heads, cfg.d_ff, cfg.dropout) for _ in range(cfg.n_layers)
         )
+        # The flattened (D x N) size fixes the input length: seq_len cannot change after construction.
         self.head = nn.Sequential(
             nn.Flatten(start_dim=-2), nn.Linear(cfg.d_model * self.n_patches, cfg.pred_len), nn.Dropout(cfg.head_dropout)
         )
+        _LOG.debug("n_patches=%s parameters=%s", self.n_patches, self.num_parameters())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """(B, L, C) -> (B, H, C)."""
