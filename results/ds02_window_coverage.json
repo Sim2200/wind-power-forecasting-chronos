@@ -1,0 +1,48 @@
+{
+ "val": {
+  "6": {
+   "windows": 13266,
+   "valid_target_fraction": 0.7271596562641339,
+   "windows_without_valid_target": 2668,
+   "windows_fully_valid_target": 8372,
+   "valid_history_fraction": 0.7195658387356149
+  },
+  "36": {
+   "windows": 13266,
+   "valid_target_fraction": 0.7227310417608925,
+   "windows_without_valid_target": 1199,
+   "windows_fully_valid_target": 4873,
+   "valid_history_fraction": 0.7195658387356149
+  },
+  "64": {
+   "windows": 13266,
+   "valid_target_fraction": 0.7265990125131916,
+   "windows_without_valid_target": 508,
+   "windows_fully_valid_target": 2924,
+   "valid_history_fraction": 0.7195658387356149
+  }
+ },
+ "test": {
+  "6": {
+   "windows": 26130,
+   "valid_target_fraction": 0.7109516519964281,
+   "windows_without_valid_target": 6276,
+   "windows_fully_valid_target": 17027,
+   "valid_history_fraction": 0.7374017997618744
+  },
+  "36": {
+   "windows": 26130,
+   "valid_target_fraction": 0.735889994472084,
+   "windows_without_valid_target": 2396,
+   "windows_fully_valid_target": 11889,
+   "valid_history_fraction": 0.7374017997618744
+  },
+  "64": {
+   "windows": 26130,
+   "valid_target_fraction": 0.7356893417527746,
+   "windows_without_valid_target": 986,
+   "windows_fully_valid_target": 9373,
+   "valid_history_fraction": 0.7374017997618744
+  }
+ }
+}
