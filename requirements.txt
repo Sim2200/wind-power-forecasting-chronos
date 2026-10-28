@@ -2,4 +2,6 @@
 # torch is installed separately from the CUDA wheel index by scripts/setup_env.sh.
 numpy==1.26.4
 pandas==2.2.3
+# parquet for the cleaned SDWPF data (Chronos export needs it too)
+pyarrow==17.0.0
 pytest==8.3.4

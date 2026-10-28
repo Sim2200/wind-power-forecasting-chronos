@@ -1,0 +1,16 @@
+{
+  "rows": 4727520,
+  "negative_patv_set_to_zero": 1263062,
+  "missing": 49518,
+  "unknown": 1082113,
+  "unknown_stopped": 299094,
+  "unknown_pitch": 984595,
+  "abnormal": 127,
+  "abnormal_ndir": 49,
+  "abnormal_wdir": 78,
+  "missing_and_unknown": 0,
+  "missing_and_abnormal": 0,
+  "unknown_and_abnormal": 97,
+  "invalid_any": 1131661,
+  "valid": 3595859
+}
