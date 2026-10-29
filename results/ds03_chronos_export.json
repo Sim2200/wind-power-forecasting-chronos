@@ -1,5 +1,6 @@
 {
  "target": "Patv (clamped, NaN where missing)",
+ "flagged": "keep",
  "chronos_train_args": {
   "context_length": 288,
   "prediction_length": 64,
@@ -26,6 +27,13 @@
    "series": 134,
    "length": 24624,
    "nan_fraction": 0.013373
+  },
+  "val.arrow": {
+   "val_period": [24624, 28224],
+   "steps": [24336, 28224],
+   "series": 134,
+   "length": 3888,
+   "nan_fraction": 0.002799
   }
  }
 }

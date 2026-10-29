@@ -60,9 +60,15 @@ def _tiny_frame(n_days: int = 6) -> pd.DataFrame:
     return rows.drop(columns="step")
 
 
-def _tiny_patv() -> np.ndarray:
+def _tiny_dense() -> tuple[np.ndarray, np.ndarray]:
+    """Dense Patv and the unknown | abnormal mask of the tiny frame. Flagged readings: turbine 1 step 420 (Patv 0
+    while the wind blows) and turbine 2 step 425 (Pab1 = 95)."""
     df = sdwpf.build_mask(sdwpf.clean(sdwpf.add_time(_tiny_frame()))[0])
-    return sdwpf.to_dense(df, "Patv")
+    return sdwpf.to_dense(df, "Patv"), sdwpf.to_dense(df, "unknown") | sdwpf.to_dense(df, "abnormal")
+
+
+def _tiny_patv() -> np.ndarray:
+    return _tiny_dense()[0]
 
 
 def test_subset_series_equals_dense_slice_and_ends_at_train_end(tiny):
@@ -99,6 +105,36 @@ def test_target_is_clamped_patv_nan_only_where_missing_flagged_rows_keep_values(
     assert full[1, 100] == 500.0  # a sensor NaN with a good Patv is not a gap
 
 
+def test_apply_flagged_keep_is_identity_and_nan_blanks_only_flagged_readings(tiny):
+    patv, flagged = _tiny_dense()
+    assert chronos_arrow.apply_flagged(patv, flagged, "keep") is patv
+    out = chronos_arrow.apply_flagged(patv, flagged, "nan")
+    assert out.dtype == np.float32
+    assert np.isnan(out[0, 420]) and np.isnan(out[1, 425])  # unknown rows: 0 while windy, pitch > 89
+    assert np.isnan(out[0, 430])  # missing stays NaN
+    assert np.isnan(out).sum() == 3  # nothing else
+    assert np.array_equal(out[~np.isnan(out)], patv[~np.isnan(out)])  # every other reading is untouched
+
+
+def test_apply_flagged_validates_mode_and_mask():
+    patv, flagged = _tiny_dense()
+    with pytest.raises(ValueError, match="one of"):
+        chronos_arrow.apply_flagged(patv, flagged, "drop")
+    with pytest.raises(ValueError, match="flagged mask"):
+        chronos_arrow.apply_flagged(patv, None, "nan")
+
+
+def test_val_series_is_val_plus_one_context_before_it(tiny):
+    patv = np.arange(2)[:, None] * 1000 + np.arange(tiny.n_steps)[None, :].astype(np.float32)
+    assert chronos_arrow.val_range(tiny) == (144, 576)  # val [432, 576) minus the 288 steps before it
+    v = chronos_arrow.val_series(patv, tiny)
+    assert v.shape == (2, 432) and v.dtype == np.float32
+    assert v[0, 0] == 144 and v[0, 288] == tiny.val[0] and v[0, -1] == 575  # ends at the last val step, before test
+    full = chronos_arrow.val_series(np.zeros((1, splits.make_split().n_steps), np.float32), splits.make_split())
+    assert full.shape == (1, 3888)
+    assert chronos_arrow.step_start(144) == np.datetime64("2020-01-02T00:00:00")
+
+
 def test_write_arrow_rejects_1d(tmp_path):
     with pytest.raises(ValueError, match="2-D"):
         chronos_arrow.write_arrow(np.zeros(5, np.float32), np.datetime64("2000-01-01T00:00:00"), tmp_path / "x.arrow")
@@ -107,30 +143,51 @@ def test_write_arrow_rejects_1d(tmp_path):
 def test_export_round_trip_through_gluonts_and_manifest(tiny, tmp_path, gluonts_ok):
     patv = _tiny_patv()
     manifest = chronos_arrow.export_subsets(patv, tiny, tmp_path)
-    assert sorted(manifest["files"]) == ["train_100pct.arrow", "train_25pct.arrow", "train_5pct.arrow"]
+    assert sorted(manifest["files"]) == ["train_100pct.arrow", "train_25pct.arrow", "train_5pct.arrow", "val.arrow"]
+    assert manifest["flagged"] == "keep" and manifest["target"] == "Patv (clamped, NaN where missing)"
     assert manifest["chronos_train_args"] == {"context_length": 288, "prediction_length": 64, "min_past": 288}
     five = manifest["files"]["train_5pct.arrow"]
     assert (five["series"], five["length"], five["steps"]) == (2, 22, [410, 432])
     assert five["nan_fraction"] == round(1 / 44, 6)  # one lost record in 2 x 22 readings
+    val = manifest["files"]["val.arrow"]
+    assert (val["series"], val["length"], val["steps"], val["val_period"]) == (2, 432, [144, 576], [432, 576])
     for name, info in manifest["files"].items():
         back = chronos_arrow.read_series(tmp_path / name)  # the way train.py reads it
-        expected = chronos_arrow.subset_series(patv, tiny, info["fraction"])
+        if name == "val.arrow":
+            expected = chronos_arrow.val_series(patv, tiny)
+        else:
+            expected = chronos_arrow.subset_series(patv, tiny, info["fraction"])
         assert back.shape == expected.shape
         assert np.array_equal(back, expected, equal_nan=True)
 
 
+def test_export_nan_mode_blanks_flagged_readings_in_every_file(tiny, tmp_path, gluonts_ok):
+    patv, flagged = _tiny_dense()
+    manifest = chronos_arrow.export_subsets(patv, tiny, tmp_path, flagged, "nan")
+    assert manifest["flagged"] == "nan" and "unknown or abnormal" in manifest["target"]
+    assert manifest["files"]["train_5pct.arrow"]["nan_fraction"] == round(3 / 44, 6)  # lost record + 2 flagged readings
+    back = chronos_arrow.read_series(tmp_path / "train_5pct.arrow")
+    assert np.isnan(back[0, 420 - 410]) and np.isnan(back[1, 425 - 410]) and np.isnan(back).sum() == 3
+    val_back = chronos_arrow.read_series(tmp_path / "val.arrow")
+    assert np.array_equal(val_back, chronos_arrow.val_series(chronos_arrow.apply_flagged(patv, flagged, "nan"), tiny), equal_nan=True)
+
+
 @pytest.mark.skipif(not CLEAN.exists(), reason="run python -m wpf.data.sdwpf first (data/sdwpf/clean.parquet)")
-def test_real_file_export_matches_committed_manifest(tmp_path, gluonts_ok):
-    """Also catches a stale manifest: if the DS-01 data changes, regenerate results/ds03_chronos_export.json."""
-    patv = sdwpf.to_dense(sdwpf.load_clean(CLEAN), "Patv")
-    manifest = chronos_arrow.export_subsets(patv, splits.make_split(), tmp_path)
+@pytest.mark.parametrize("mode,manifest_name", [("keep", "ds03_chronos_export.json"), ("nan", "ds03_chronos_export_nan.json")])
+def test_real_file_export_matches_committed_manifest(tmp_path, gluonts_ok, mode, manifest_name):
+    """Also catches a stale manifest: if the DS-01 data changes, regenerate results/ds03_chronos_export*.json (both --flagged modes)."""
+    df = sdwpf.load_clean(CLEAN)
+    patv = sdwpf.to_dense(df, "Patv")
+    flagged = sdwpf.to_dense(df, "unknown") | sdwpf.to_dense(df, "abnormal")
+    manifest = chronos_arrow.export_subsets(patv, splits.make_split(), tmp_path, flagged, mode)
     assert {n: (i["series"], i["length"]) for n, i in manifest["files"].items()} == {
         "train_5pct.arrow": (134, 1231),
         "train_25pct.arrow": (134, 6156),
         "train_100pct.arrow": (134, 24624),
+        "val.arrow": (134, 3888),
     }
     for name, info in manifest["files"].items():  # every entry passes train.py's length / missing-share filter
         series = chronos_arrow.read_series(tmp_path / name)
         assert series.shape[1] >= 288 + 64 and np.isnan(series).mean(axis=1).max() <= 0.9
-    committed = json.loads((REPO / "results" / "ds03_chronos_export.json").read_text())
+    committed = json.loads((REPO / "results" / manifest_name).read_text())
     assert committed == json.loads(splits.dump_json(manifest))

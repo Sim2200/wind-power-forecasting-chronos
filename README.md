@@ -12,7 +12,7 @@ Get the raw files with `scripts/download_sdwpf.sh` (checksummed, into `data/sdwp
 
 The split boundaries, training subsets and shared evaluation windows are fixed by `python -m wpf.data.splits --clean data/sdwpf/clean.parquet`, which writes `results/ds02_splits.json` (load it with `wpf.data.splits.load_splits`) and the coverage reports `results/ds02_window_coverage.json` and `results/ds02_window_counts.npz`.
 
-The Chronos training subsets are exported as GluonTS Arrow files by `python -m wpf.data.chronos_arrow` (reads `data/sdwpf/clean.parquet`, writes `data/sdwpf/chronos/train_{5,25,100}pct.arrow` and `results/ds03_chronos_export.json`); it needs `gluonts` on Python 3.10-3.13, and `train.py` must be run with the `chronos_train_args` from that manifest.
+The Chronos training subsets are exported as GluonTS Arrow files by `python -m wpf.data.chronos_arrow` (reads `data/sdwpf/clean.parquet`, writes `data/sdwpf/chronos/train_{5,25,100}pct.arrow`, `val.arrow` and `results/ds03_chronos_export.json`; `--flagged nan` blanks the unknown/abnormal readings instead of keeping them and writes to `data/sdwpf/chronos_nan/` and `results/ds03_chronos_export_nan.json`); it needs `gluonts` on Python 3.10-3.13, and `train.py` must be run with the `chronos_train_args` from that manifest.
 
 ## Running on Zaratan
 
