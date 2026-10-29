@@ -8,6 +8,8 @@ We forecast wind-farm power with a PatchTST transformer implemented from scratch
 
 [SDWPF](https://arxiv.org/abs/2208.04360) (Baidu KDD Cup 2022): 134 turbines, 10-minute readings, 245 days. Download from Baidu AI Studio or the Hugging Face mirror `aigrids/WindFarm_raw`. Raw data is not committed to this repo.
 
+Get the raw files with `scripts/download_sdwpf.sh` (checksummed, into `data/sdwpf/raw/`), then clean them with `python -m wpf.data.sdwpf`, which writes `data/sdwpf/clean.parquet` (plus `turbine_locations.parquet` beside it) and the counts in `results/ds01_counts.json`.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).
