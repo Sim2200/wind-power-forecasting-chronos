@@ -10,6 +10,8 @@ We forecast wind-farm power with a PatchTST transformer implemented from scratch
 
 Get the raw files with `scripts/download_sdwpf.sh` (checksummed, into `data/sdwpf/raw/`), then clean them with `python -m wpf.data.sdwpf`, which writes `data/sdwpf/clean.parquet` (plus `turbine_locations.parquet` beside it) and the counts in `results/ds01_counts.json`.
 
+The split boundaries, training subsets and shared evaluation windows are fixed by `python -m wpf.data.splits --clean data/sdwpf/clean.parquet`, which writes `results/ds02_splits.json` (load it with `wpf.data.splits.load_splits`) and the coverage reports `results/ds02_window_coverage.json` and `results/ds02_window_counts.npz`.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).
