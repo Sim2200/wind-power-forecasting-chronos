@@ -1,0 +1,25 @@
+# Smoke config for Chronos' scripts/training/train.py on the DS-03 Arrow files
+# (chronos-forecasting repo, run as: python training/train.py --config <this file>).
+# train.py takes its options only through --config; the CLI flags are not accepted.
+# 2 steps of chronos-t5-tiny on CPU: proves the files load. CF-01 copies this and sets
+# model_id, max_steps, batch size and output_dir for real runs.
+training_data_paths:
+- data/sdwpf/chronos/train_5pct.arrow
+probability:
+- 1.0
+# DS-02 windows: L = 288, H = 64, and min_past = context_length so no padded history is sampled
+context_length: 288
+prediction_length: 64
+min_past: 288
+max_steps: 2
+save_steps: 2
+log_steps: 1
+per_device_train_batch_size: 4
+gradient_accumulation_steps: 1
+model_id: amazon/chronos-t5-tiny
+model_type: seq2seq
+random_init: false
+tf32: false
+torch_compile: false
+dataloader_num_workers: 0
+output_dir: results/chronos_smoke
