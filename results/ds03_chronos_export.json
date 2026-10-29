@@ -1,0 +1,31 @@
+{
+ "target": "Patv (clamped, NaN where missing)",
+ "chronos_train_args": {
+  "context_length": 288,
+  "prediction_length": 64,
+  "min_past": 288
+ },
+ "files": {
+  "train_5pct.arrow": {
+   "fraction": 0.05,
+   "steps": [23393, 24624],
+   "series": 134,
+   "length": 1231,
+   "nan_fraction": 0.002401
+  },
+  "train_25pct.arrow": {
+   "fraction": 0.25,
+   "steps": [18468, 24624],
+   "series": 134,
+   "length": 6156,
+   "nan_fraction": 0.003068
+  },
+  "train_100pct.arrow": {
+   "fraction": 1.0,
+   "steps": [0, 24624],
+   "series": 134,
+   "length": 24624,
+   "nan_fraction": 0.013373
+  }
+ }
+}
