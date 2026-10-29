@@ -1,23 +1,36 @@
 """SDWPF (Baidu KDD Cup 2022) loading, cleaning and the valid-reading mask.
 
 Raw file: `sdwpf_245days_v1.csv`, 134 turbines x 245 days x 144 ten-minute slots = 4,727,520 rows.
-Every turbine has the full grid, so a missing reading is a row whose 10 sensor columns are all NaN.
+Every turbine has the full grid, so a lost record is a row whose Patv is NaN (in this file all 10 sensor
+columns are NaN together, but the rule only depends on Patv).
 
 Technical decisions (also listed in the DS-01 pull request):
 - NaN stays NaN in the saved data and is only marked invalid. Nothing is filled here: Chronos takes the
   NaNs as they are, PatchTST/LSTM apply a backward-only last-value fill per turbine at input time
   (DS-02..DS-06). Metrics and scaler statistics must use `valid` rows only.
-- Negative Patv is set to 0 *before* the "unknown" rule is evaluated, so clamped rows count as Patv <= 0.
+- `missing` means Patv is NaN (a lost record, as in the SDWPF paper). A row with a good Patv and another
+  sensor NaN is not missing; `sensor_nan` flags any NaN among the 9 other sensors and is informational only
+  (it does not affect `valid`).
+- `Patv_raw` is the untouched reading. `Patv` is the same reading with negatives set to 0: the paper's
+  scoring rule, so it is the scale for targets and metrics. Inputs may use `Patv_raw` to keep the
+  "turbine idle / drawing power" signal. Both are NaN on missing rows. The "unknown" rule (Patv <= 0) gives
+  the same answer on either column, so clamp order does not matter.
 - A NaN never trips a threshold (the comparison is False), so a gap row is only `missing`. The three flags
-  can overlap; `valid` is the complement of their union. Counts are reported per category and combined.
+  can overlap; `valid` is the complement of their union. Counts are reported per category and combined,
+  plus per turbine and per day, since the recency subsets depend on which turbines are missing when.
+- Flagged rows in inputs: `unknown` and `abnormal` rows (about 23%) are excluded from the loss and the
+  metrics, but they stay in input windows as real history (not filled, not dropped). Only `missing` rows
+  are gap-filled at input time. DS-02 and PT-01 must build windows this way.
 - Output is one long-format parquet, float32 features, sorted by (TurbID, step). Because the grid is
   complete, `to_dense` reshapes any column to (turbines, steps) for window building (DS-02, DS-03).
+  Turbine locations (TurbID, x, y) are saved next to it as `turbine_locations.parquet`.
 - SDWPF hides the calendar date. `step = (Day - 1) * 144 + slot` is the real ordering key; `ts` is that
   step on a synthetic anchor date and must not be read as a real date.
-- Sensor outliers the issue's rules do not cover (e.g. Etmp = -273, Wdir = -3030) are left untouched:
-  only Patv is a forecast target.
+- Covariates (Wspd, Wdir, Etmp, ...) are left untouched, including outliers such as Etmp = -273 and
+  Wdir = -3030: only Patv is read by the models for now. A model that reads another sensor (e.g. the LSTM
+  baseline) must first clip it to its physical range and flag the clipped rows.
 
-Usage:
+Usage (raw files: scripts/download_sdwpf.sh):
     python -m wpf.data.sdwpf --raw data/sdwpf/raw/sdwpf_245days_v1.csv \\
         --out data/sdwpf/clean.parquet --counts results/ds01_counts.json
 """
@@ -26,6 +39,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 from pathlib import Path
 
 import numpy as np
@@ -41,7 +55,9 @@ STEP_MINUTES = 10
 TS_ANCHOR = pd.Timestamp("2020-01-01")  # synthetic: SDWPF gives no calendar date
 
 FEATURES = ["Wspd", "Wdir", "Etmp", "Itmp", "Ndir", "Pab1", "Pab2", "Pab3", "Prtv", "Patv"]
+SENSORS = [c for c in FEATURES if c != "Patv"]
 RAW_COLUMNS = ["TurbID", "Day", "Tmstamp", *FEATURES]
+LOCATION_COLUMNS = ["TurbID", "x", "y"]
 FLAGS = ["missing", "unknown", "abnormal"]
 
 WSPD_STOPPED = 2.5  # m/s: a turbine producing <= 0 above this wind speed is not behaving normally
@@ -89,22 +105,28 @@ def add_time(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def clean(df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-    """Set negative Patv to 0 (NaN is kept). Returns the cleaned frame and how many readings were clamped."""
+    """Keep the reading as `Patv_raw`, set negative Patv to 0 (NaN is kept).
+
+    Returns the cleaned frame and how many readings were clamped.
+    """
     _LOG.debug("rows=%d", len(df))
     out = df.copy()
+    out["Patv_raw"] = out["Patv"]
     n_negative = int((out["Patv"] < 0).sum())
     out["Patv"] = out["Patv"].clip(lower=0)  # clip keeps NaN
     return out, n_negative
 
 
 def build_mask(df: pd.DataFrame) -> pd.DataFrame:
-    """Add bool columns `missing`, `unknown`, `abnormal` and `valid` (= none of the three).
+    """Add bool columns `missing`, `unknown`, `abnormal`, `valid` (= none of the three) and `sensor_nan`.
 
-    Call this on the output of `clean` so negative Patv is already 0.
+    `missing` is Patv NaN; `sensor_nan` (any other sensor NaN) is informational and not part of `valid`.
+    Call this on the output of `clean`.
     """
     _LOG.debug("rows=%d", len(df))
     out = df.copy()
-    out["missing"] = out[FEATURES].isna().any(axis=1)
+    out["missing"] = out["Patv"].isna()
+    out["sensor_nan"] = out[SENSORS].isna().any(axis=1)
     out["unknown"] = _unknown_stopped(out) | _unknown_pitch(out)
     out["abnormal"] = _abnormal_ndir(out) | _abnormal_wdir(out)
     out["valid"] = ~out[FLAGS].any(axis=1)
@@ -135,6 +157,8 @@ def category_counts(df: pd.DataFrame, n_negative_clamped: int = 0) -> dict[str, 
         "rows": len(df),
         "negative_patv_set_to_zero": n_negative_clamped,
         "missing": int(m.sum()),
+        "sensor_nan": int(df["sensor_nan"].sum()),
+        "sensor_nan_but_patv_present": int((df["sensor_nan"] & ~m).sum()),
         "unknown": int(u.sum()),
         "unknown_stopped": int(_unknown_stopped(df).sum()),
         "unknown_pitch": int(_unknown_pitch(df).sum()),
@@ -150,6 +174,36 @@ def category_counts(df: pd.DataFrame, n_negative_clamped: int = 0) -> dict[str, 
     if counts["valid"] + counts["invalid_any"] != counts["rows"]:
         raise ValueError("valid + invalid_any does not add up to the row count")
     return counts
+
+
+def valid_fractions(df: pd.DataFrame) -> dict[str, dict[str, list]]:
+    """Share of valid and of missing readings per turbine and per day, as column-wise lists.
+
+    Farm-wide totals hide which turbines are missing when, and the recency subsets depend on exactly that.
+    """
+    _LOG.debug("rows=%d", len(df))
+    out = {}
+    for name, key in (("per_turbine", "TurbID"), ("per_day", "Day")):
+        g = df.groupby(key)[["valid", "missing"]].mean().round(6)
+        out[name] = {
+            key: g.index.tolist(),
+            "valid_fraction": g["valid"].tolist(),
+            "missing_fraction": g["missing"].tolist(),
+        }
+    return out
+
+
+def load_locations(csv_path: str | Path, n_turbines: int = N_TURBINES) -> pd.DataFrame:
+    """Read the SDWPF turbine location file (TurbID, x, y), one row per turbine, sorted by TurbID."""
+    _LOG.debug("csv_path='%s' n_turbines=%d", csv_path, n_turbines)
+    loc = pd.read_csv(csv_path, dtype={"TurbID": "int16", "x": "float32", "y": "float32"})
+    missing = [c for c in LOCATION_COLUMNS if c not in loc.columns]
+    if missing:
+        raise ValueError(f"{csv_path} is missing columns {missing}")
+    loc = loc[LOCATION_COLUMNS].sort_values("TurbID").reset_index(drop=True)
+    if len(loc) != n_turbines or loc["TurbID"].duplicated().any():
+        raise ValueError(f"expected {n_turbines} distinct turbines in {csv_path}, got {len(loc)} rows")
+    return loc
 
 
 def to_dense(df: pd.DataFrame, column: str) -> np.ndarray:
@@ -177,29 +231,40 @@ def load_clean(path: str | Path) -> pd.DataFrame:
     return pd.read_parquet(path)
 
 
-def build(raw_csv: str | Path) -> tuple[pd.DataFrame, dict[str, int]]:
-    """Raw CSV -> cleaned frame with mask, plus the per-category counts."""
+def build(raw_csv: str | Path) -> tuple[pd.DataFrame, dict]:
+    """Raw CSV -> cleaned frame with mask, plus the counts (per category, per turbine, per day)."""
     df = load_raw(raw_csv)
     check_grid(df)
     df = add_time(df)
     df, n_negative = clean(df)
     df = build_mask(df)
-    return df, category_counts(df, n_negative)
+    return df, {**category_counts(df, n_negative), **valid_fractions(df)}
+
+
+def _dump_counts(counts: dict) -> str:
+    """JSON with the per-turbine and per-day lists on one line each, so the file stays readable."""
+    text = json.dumps(counts, indent=2)
+    return re.sub(r"\[[^\[\]{}]*\]", lambda m: " ".join(m.group(0).split()).replace("[ ", "[").replace(" ]", "]"), text)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Clean the SDWPF CSV and build the valid-reading mask.")
     parser.add_argument("--raw", type=Path, default=Path("data/sdwpf/raw/sdwpf_245days_v1.csv"))
+    parser.add_argument("--locations", type=Path, default=Path("data/sdwpf/raw/sdwpf_baidukddcup2022_turb_location.csv"))
     parser.add_argument("--out", type=Path, default=Path("data/sdwpf/clean.parquet"))
     parser.add_argument("--counts", type=Path, default=Path("results/ds01_counts.json"))
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     df, counts = build(args.raw)
+    loc = load_locations(args.locations)
+    if set(loc["TurbID"]) != set(df["TurbID"].unique()):
+        raise ValueError("turbine ids in the location file and the readings differ")
     save_clean(df, args.out)
+    save_clean(loc, args.out.parent / "turbine_locations.parquet")
     args.counts.parent.mkdir(parents=True, exist_ok=True)
-    args.counts.write_text(json.dumps(counts, indent=2) + "\n")
-    _LOG.info("wrote %s and %s", args.out, args.counts)
-    print(json.dumps(counts, indent=2))
+    args.counts.write_text(_dump_counts(counts) + "\n")
+    _LOG.info("wrote %s, turbine_locations.parquet and %s", args.out, args.counts)
+    print(json.dumps({k: v for k, v in counts.items() if not isinstance(v, dict)}, indent=2))
 
 
 if __name__ == "__main__":

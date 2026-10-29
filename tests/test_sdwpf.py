@@ -43,6 +43,8 @@ def test_negative_patv_set_to_zero_and_counted():
     assert n_negative == 1
     assert out["Patv"].tolist()[:2] == [0.0, 10.0]
     assert np.isnan(out["Patv"].iloc[2])  # NaN is kept, not turned into 0
+    # the untouched reading stays available for inputs
+    assert out["Patv_raw"].tolist()[:2] == [-5.0, 10.0] and np.isnan(out["Patv_raw"].iloc[2])
 
 
 def test_unknown_stopped_boundary():
@@ -70,6 +72,14 @@ def test_nan_row_is_only_missing():
     assert m[["missing", "unknown", "abnormal", "valid"]].iloc[0].tolist() == [True, False, False, False]
 
 
+def test_missing_means_patv_nan_not_any_sensor_nan():
+    m = _mask([_row(Etmp=np.nan), _row(Patv=np.nan), _row()])
+    # a good Patv with another sensor missing is still scored; only a lost Patv is "missing"
+    assert m["missing"].tolist() == [False, True, False]
+    assert m["sensor_nan"].tolist() == [True, False, False]  # informational, not part of valid
+    assert m["valid"].tolist() == [True, False, True]
+
+
 def test_valid_is_complement_of_union_and_counts_add_up():
     rows = [
         _row(),  # valid
@@ -79,9 +89,11 @@ def test_valid_is_complement_of_union_and_counts_add_up():
         _row(Wspd=np.nan, Wdir=np.nan, Etmp=np.nan, Itmp=np.nan, Ndir=np.nan, Pab1=np.nan, Pab2=np.nan,
              Pab3=np.nan, Prtv=np.nan, Patv=np.nan),  # missing
     ]
+    rows.append(_row(Itmp=np.nan))  # sensor NaN with a good Patv: valid, counted as sensor_nan only
     c = sdwpf.category_counts(_mask(rows), n_negative_clamped=7)
-    assert (c["rows"], c["valid"], c["invalid_any"]) == (5, 1, 4)
+    assert (c["rows"], c["valid"], c["invalid_any"]) == (6, 2, 4)
     assert (c["missing"], c["unknown"], c["abnormal"]) == (1, 2, 2)
+    assert (c["sensor_nan"], c["sensor_nan_but_patv_present"]) == (2, 1)
     assert c["unknown_and_abnormal"] == 1 and c["missing_and_unknown"] == 0
     assert c["negative_patv_set_to_zero"] == 7
 
@@ -118,6 +130,36 @@ def test_to_dense_matches_per_turbine_series():
         sdwpf.to_dense(df.sample(frac=1, random_state=1), "Patv")
 
 
+def test_valid_fractions_per_turbine_and_day_hand_counts():
+    raw = _tiny_grid()  # 2 turbines x 2 days x 144 slots
+    raw.loc[(raw["TurbID"] == 1) & (raw["Day"] == 1), "Patv"] = np.nan  # turbine 1 loses all of day 1
+    df = sdwpf.build_mask(sdwpf.clean(sdwpf.add_time(raw))[0])
+    f = sdwpf.valid_fractions(df)
+    assert f["per_turbine"]["TurbID"] == [1, 2]
+    assert f["per_turbine"]["valid_fraction"] == [0.5, 1.0]
+    assert f["per_turbine"]["missing_fraction"] == [0.5, 0.0]
+    assert f["per_day"]["Day"] == [1, 2]
+    assert f["per_day"]["valid_fraction"] == [0.5, 1.0]  # day 1: turbine 1 gone, turbine 2 fine
+
+
+def test_counts_json_keeps_lists_on_one_line():
+    text = sdwpf._dump_counts({"rows": 3, "per_day": {"Day": [1, 2, 3], "valid_fraction": [0.5, 1.0, 0.25]}})
+    assert '"Day": [1, 2, 3]' in text and '"valid_fraction": [0.5, 1.0, 0.25]' in text
+
+
+def test_load_locations_checks_columns_and_count(tmp_path):
+    good = tmp_path / "loc.csv"
+    good.write_text("TurbID,x,y\n3,30.0,3.5\n1,10.0,1.5\n2,20.0,2.5\n")
+    loc = sdwpf.load_locations(good, n_turbines=3)
+    assert loc["TurbID"].tolist() == [1, 2, 3] and loc["x"].tolist() == [10.0, 20.0, 30.0]  # sorted by TurbID
+    with pytest.raises(ValueError, match="expected 4"):
+        sdwpf.load_locations(good, n_turbines=4)
+    bad = tmp_path / "bad.csv"
+    bad.write_text("TurbID,x\n1,10.0\n")
+    with pytest.raises(ValueError, match="columns"):
+        sdwpf.load_locations(bad, n_turbines=1)
+
+
 def test_parquet_round_trip(tmp_path):
     df = sdwpf.build_mask(sdwpf.clean(sdwpf.add_time(_tiny_grid()))[0])
     sdwpf.save_clean(df, tmp_path / "clean.parquet")
@@ -130,6 +172,11 @@ def test_parquet_round_trip(tmp_path):
 def test_real_file_grid_and_missing_count():
     df, counts = sdwpf.build(CSV)
     assert counts["rows"] == sdwpf.N_ROWS == 4_727_520
+    # pinned, so a change to a rule cannot shift the counts silently
     assert counts["missing"] == 49_518
+    assert counts["valid"] == 3_595_859
+    assert counts["negative_patv_set_to_zero"] == 1_263_062
     assert counts["valid"] + counts["invalid_any"] == counts["rows"]
+    assert df["Patv_raw"].min() < 0 and df["Patv"].min() == 0  # raw kept, target clamped
+    assert len(counts["per_turbine"]["TurbID"]) == 134 and len(counts["per_day"]["Day"]) == 245
     assert sdwpf.to_dense(df, "valid").shape == (sdwpf.N_TURBINES, sdwpf.N_DAYS * sdwpf.SLOTS_PER_DAY)
