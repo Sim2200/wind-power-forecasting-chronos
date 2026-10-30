@@ -1,0 +1,28 @@
+{
+ "what": "Chronos scripts/training/train.py loaded and trained 2 CPU steps of chronos-t5-tiny on every DS-03 Arrow file (configs/chronos_smoke.yaml with training_data_paths swapped per file)",
+ "where": "Zaratan login node, Python 3.10.10, 0 SU",
+ "date": "2026-10-29",
+ "env": {
+  "torch": "2.5.1+cu121",
+  "transformers": "4.57.6 (5.x fails to import on torch 2.5.1)",
+  "accelerate": "1.15.0",
+  "gluonts": "0.17.0",
+  "pyarrow": "25.0.1 (pulled by chronos-forecasting dev extras via datasets)",
+  "chronos-forecasting": "2.3.3.dev0, commit 1224faf, installed with .[dev]"
+ },
+ "files": {
+  "chronos/train_5pct.arrow": {"loaded": true, "first_loss": 3.1152},
+  "chronos/train_25pct.arrow": {"loaded": true, "first_loss": 4.0075},
+  "chronos/train_100pct.arrow": {"loaded": true, "first_loss": 4.2826},
+  "chronos/val.arrow": {"loaded": true, "first_loss": 3.7544},
+  "chronos_nan/train_5pct.arrow": {"loaded": true, "first_loss": 4.6275},
+  "chronos_nan/train_25pct.arrow": {"loaded": true, "first_loss": 4.7541},
+  "chronos_nan/train_100pct.arrow": {"loaded": true, "first_loss": 4.8521},
+  "chronos_nan/val.arrow": {"loaded": true, "first_loss": 4.0489}
+ },
+ "notes": [
+  "No series was dropped by train.py's max_missing_prop filter, including the nan-mode 5% file at 29.8% NaN.",
+  "Both exports on Zaratan reproduce the committed manifests; 52 tests pass with the real parquet.",
+  "OMP_NUM_THREADS must be capped on the login node or libgomp fails to create threads; not needed in Slurm jobs."
+ ]
+}
