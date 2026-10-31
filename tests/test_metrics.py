@@ -25,11 +25,11 @@ def test_point_metrics_by_hand_with_an_invalid_reading_and_nan_prediction_there(
     valid = np.array([[[True, True], [True, False]]])  # the NaN prediction sits on the invalid reading
     out = metrics.evaluate(y, valid, np.array([2.0]), pred=pred, horizons=(1, 2))
     # H = 1: errors 1 and 2 -> MAE 1.5, RMSE sqrt(5/2), MASE 1.5 / 2
-    assert out[1]["mae"] == 1.5 and out[1]["rmse"] == pytest.approx(np.sqrt(2.5)) and out[1]["mase"] == 0.75
+    assert out['1']["mae"] == 1.5 and out['1']["rmse"] == pytest.approx(np.sqrt(2.5)) and out['1']["mase"] == 0.75
     # H = 2: errors 1, 0, 2 (the invalid one is dropped) -> MAE 1, RMSE sqrt(5/3), MASE 0.5
-    assert out[2]["mae"] == 1.0 and out[2]["rmse"] == pytest.approx(np.sqrt(5 / 3)) and out[2]["mase"] == 0.5
-    assert out[2]["n_valid"] == 3 and out[1]["n_valid"] == 2
-    assert np.isnan(out[2]["wql"])  # a point model has no WQL
+    assert out['2']["mae"] == 1.0 and out['2']["rmse"] == pytest.approx(np.sqrt(5 / 3)) and out['2']["mase"] == 0.5
+    assert out['2']["n_valid"] == 3 and out['1']["n_valid"] == 2
+    assert np.isnan(out['2']["wql"])  # a point model has no WQL
 
 
 def test_mase_is_averaged_over_turbines_and_skips_a_zero_scale():
@@ -75,9 +75,9 @@ def test_evaluate_takes_the_first_h_steps_and_both_kinds_of_forecast():
     pred = y + 1.0
     qpred = np.stack([y + 1.0] * len(metrics.QUANTILES))
     out = metrics.evaluate(y, valid, np.array([1.0]), pred=pred, quantile_pred=qpred, horizons=(2, 6))
-    assert set(out) == {2, 6} and out[2]["n_valid"] == 4 and out[6]["n_valid"] == 12
-    assert out[2]["mae"] == out[6]["mae"] == 1.0 and out[6]["mase"] == 1.0
-    assert out[2]["wql"] == pytest.approx(_wql_shift(y[..., :2], metrics.QUANTILES))
+    assert set(out) == {'2', '6'} and out['2']["n_valid"] == 4 and out['6']["n_valid"] == 12
+    assert out['2']["mae"] == out['6']["mae"] == 1.0 and out['6']["mase"] == 1.0
+    assert out['2']["wql"] == pytest.approx(_wql_shift(y[..., :2], metrics.QUANTILES))
 
 
 def _wql_shift(y, quantiles):
@@ -112,3 +112,41 @@ def test_evaluate_validates_its_inputs():
         metrics.evaluate(y, valid[:, :, :1], np.array([1.0]), pred=y, horizons=(1,))
     with pytest.raises(ValueError, match="one leading entry"):
         metrics.wql(np.stack([y] * 3), y, valid)
+
+
+def test_evaluate_passes_quantiles_to_wql():
+    y = np.array([[[4.0, 0.0]]])
+    valid = np.ones(y.shape, bool)
+    qpred = np.array([[[[2.0, 2.0]]], [[[6.0, 1.0]]]])
+    out = metrics.evaluate(y, valid, np.array([1.0]), quantile_pred=qpred, horizons=(2,), quantiles=(0.25, 0.75))
+    assert out["2"]["wql"] == pytest.approx((1.0 + 0.375) / 2)
+    with pytest.raises(ValueError, match="one leading entry"):
+        metrics.evaluate(y, valid, np.array([1.0]), quantile_pred=qpred, horizons=(2,))
+
+
+def test_eval_inputs_builds_windows_and_scale_from_the_split():
+    from wpf.data import splits
+
+    split = splits.make_split()
+    n_steps = split.n_steps
+    steps = np.arange(n_steps, dtype=np.float64)
+    dense = np.stack([steps, 2 * steps])  # two turbines; |y_t - y_{t-144}| = 144 and 288 everywhere
+    valid_dense = np.ones(dense.shape, bool)
+    valid_dense[1, 24700] = False
+    y, valid, scale = metrics.eval_inputs(dense, valid_dense, split, "val")
+    origins = splits.eval_origins(split, "val")
+    assert y.shape == valid.shape == (2, len(origins), 64)
+    assert y[1, 0, 0] == 2 * origins[0] and y[0, 1, 5] == origins[1] + 5
+    assert not valid[1, (24700 - origins[0]) // 36, 24700 - origins[(24700 - origins[0]) // 36]]
+    np.testing.assert_allclose(scale, [144.0, 288.0])
+
+
+def test_save_results_writes_string_keys_and_null_for_nan(tmp_path):
+    y = np.ones((1, 1, 6))
+    res = metrics.evaluate(y, np.ones(y.shape, bool), np.array([1.0]), pred=y, horizons=(6,))
+    metrics.save_results(tmp_path / "r.json", res)
+    import json
+
+    got = json.loads((tmp_path / "r.json").read_text())
+    assert list(got) == ["6"] and got["6"]["wql"] is None
+    assert set(got["6"]) == {"mae", "rmse", "mase", "mase_turbines", "n_valid", "wql"} and got["6"]["n_valid"] == 6

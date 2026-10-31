@@ -22,10 +22,15 @@ Technical decisions (also listed in the DS-04 pull request):
 - A prediction that is not finite on a valid reading is an error, not a skipped reading: a model that emits NaN
   must not look better by being scored on fewer readings.
 - Empty selections (no valid reading, or sum |y| = 0) give NaN rather than 0.
+- `eval_inputs` builds (y, valid, scale) for a period once, so no model repeats the windows / MASE-range steps.
+- Results are keyed by horizon as strings ("6", "36", "64") so the in-memory dict and the saved JSON have the same
+  layout; every entry keeps mae, rmse, mase, mase_turbines, n_valid and wql. `save_results` writes NaN as null.
 """
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 
 import numpy as np
 
@@ -50,6 +55,23 @@ def mase_scale(train: np.ndarray, train_valid: np.ndarray, m: int = SEASON) -> n
     diff = np.where(both, np.abs(train[:, m:].astype(np.float64) - train[:, :-m]), 0.0)
     n = both.sum(axis=1)
     return np.where(n > 0, diff.sum(axis=1) / np.maximum(n, 1), np.nan)
+
+
+def eval_inputs(dense: np.ndarray, valid_dense: np.ndarray, split: splits.Split, period: str) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """(y, valid, scale) of the shared evaluation windows of `period` ('val' or 'test').
+
+    `dense` and `valid_dense` are (turbines, steps) from `sdwpf.to_dense` (Patv and `valid`). y and valid have
+    shape (turbines, origins, max horizon); scale is the per-turbine MASE denominator on the train range.
+    """
+    _LOG.debug("dense.shape=%s period='%s'", dense.shape, period)
+    if dense.shape != valid_dense.shape:
+        raise ValueError("dense and valid_dense must have the same shape")
+    origins = splits.eval_origins(split, period)
+    horizon = max(splits.HORIZONS)
+    _, y = splits.windows_at(dense, origins, horizon)
+    _, valid = splits.windows_at(valid_dense, origins, horizon)
+    start, end = splits.mase_train_range(split)
+    return y, valid, mase_scale(dense[:, start:end], valid_dense[:, start:end])
 
 
 def _check_shapes(y: np.ndarray, valid: np.ndarray, pred: np.ndarray) -> None:
@@ -112,11 +134,13 @@ def evaluate(
     pred: np.ndarray | None = None,
     quantile_pred: np.ndarray | None = None,
     horizons: tuple[int, ...] = splits.HORIZONS,
-) -> dict[int, dict]:
+    quantiles: tuple[float, ...] = QUANTILES,
+) -> dict[str, dict]:
     """Metrics for each horizon H on the first H steps of every window.
 
     Give `pred` (point forecast; for a quantile model pass its median) and/or `quantile_pred` (WQL). At least one
-    is required; `wql` is NaN without `quantile_pred`. Returns {H: {mae, rmse, mase, mase_turbines, n_valid, wql}}.
+    is required; `wql` is NaN without `quantile_pred`, which has one leading entry per value of `quantiles`.
+    Returns {"H": {mae, rmse, mase, mase_turbines, n_valid, wql}} with H as a string.
     """
     _LOG.debug("y.shape=%s horizons=%s", y.shape, horizons)
     if pred is None and quantile_pred is None:
@@ -132,6 +156,14 @@ def evaluate(
         res = {"mae": np.nan, "rmse": np.nan, "mase": np.nan, "mase_turbines": 0, "n_valid": int(v_h.sum())}
         if pred is not None:
             res = point_metrics(pred[..., :h], y_h, v_h, scale)
-        res["wql"] = wql(quantile_pred[..., :h], y_h, v_h) if quantile_pred is not None else float("nan")
-        out[h] = res
+        res["wql"] = wql(quantile_pred[..., :h], y_h, v_h, quantiles) if quantile_pred is not None else float("nan")
+        out[str(h)] = res
     return out
+
+
+def save_results(path: str | Path, results: dict[str, dict]) -> None:
+    """Write `evaluate` output as JSON (NaN as null) so EX-03 reads every model's file the same way."""
+    _LOG.debug("path='%s'", path)
+    clean = {h: {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in r.items()} for h, r in results.items()}
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).write_text(json.dumps(clean, indent=1) + "\n", encoding="utf-8")
