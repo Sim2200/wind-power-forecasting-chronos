@@ -23,11 +23,16 @@ Technical decisions (also listed in the DS-04 pull request):
   must not look better by being scored on fewer readings.
 - Empty selections (no valid reading, or sum |y| = 0) give NaN rather than 0.
 - `eval_inputs` builds (y, valid, scale) for a period once, so no model repeats the windows / MASE-range steps.
+- Persistence (`persistence_forecast`, the DS-04 smoke run; DS-05 reuses it): the forecast repeats the last reading
+  before the origin after a last-value fill. Only a missing reading (Patv NaN) is filled, with the most recent earlier
+  non-NaN value (0 if the turbine has none yet). An unknown or abnormal reading has a value and is used as it is,
+  because flagged rows stay in the input windows; they are excluded from the metrics, not from the history.
 - Results are keyed by horizon as strings ("6", "36", "64") so the in-memory dict and the saved JSON have the same
   layout; every entry keeps mae, rmse, mase, mase_turbines, n_valid and wql. `save_results` writes NaN as null.
 """
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 from pathlib import Path
@@ -167,3 +172,46 @@ def save_results(path: str | Path, results: dict[str, dict]) -> None:
     clean = {h: {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in r.items()} for h, r in results.items()}
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(clean, indent=1) + "\n", encoding="utf-8")
+
+
+def last_value_fill(dense: np.ndarray) -> np.ndarray:
+    """Forward-fill NaN along time per turbine; NaN before a turbine's first reading becomes 0."""
+    _LOG.debug("dense.shape=%s", dense.shape)
+    steps = np.arange(dense.shape[1])
+    last = np.maximum.accumulate(np.where(np.isnan(dense), 0, steps), axis=1)
+    filled = np.take_along_axis(dense, last, axis=1)
+    return np.where(np.isnan(filled), 0.0, filled)
+
+
+def persistence_forecast(dense: np.ndarray, origins: np.ndarray, horizon: int = max(splits.HORIZONS)) -> np.ndarray:
+    """(turbines, origins, horizon): the last reading before each origin (last-value filled), repeated."""
+    _LOG.debug("dense.shape=%s n_origins=%d horizon=%d", dense.shape, len(origins), horizon)
+    last = last_value_fill(dense.astype(np.float64))[:, np.asarray(origins) - 1]
+    return np.repeat(last[..., None], horizon, axis=2)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Persistence forecast on the real SDWPF arrays: first end-to-end check of the metrics.")
+    parser.add_argument("--clean", type=Path, default=Path("data/sdwpf/clean.parquet"), help="DS-01 parquet")
+    parser.add_argument("--splits", type=Path, default=Path("results/ds02_splits.json"))
+    parser.add_argument("--period", default="val", choices=("val", "test"))
+    parser.add_argument("--out", type=Path, default=Path("results/ds04_smoke_persistence_val.json"))
+    args = parser.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+    from wpf.data import sdwpf  # lazy: pandas/pyarrow are only needed here
+
+    df = sdwpf.load_clean(args.clean)
+    patv, valid = sdwpf.to_dense(df, "Patv").astype(np.float64), sdwpf.to_dense(df, "valid").astype(bool)
+    split = splits.load_splits(args.splits)
+    if patv.shape[1] != split.n_steps:
+        raise ValueError(f"{args.clean} has {patv.shape[1]} steps per turbine, the split expects {split.n_steps}")
+    y, v, scale = eval_inputs(patv, valid, split, args.period)
+    pred = persistence_forecast(patv, splits.eval_origins(split, args.period))
+    res = evaluate(y, v, scale, pred=pred)
+    save_results(args.out, res)
+    _LOG.info("wrote %s", args.out)
+    print(json.dumps(res, indent=1))
+
+
+if __name__ == "__main__":
+    main()

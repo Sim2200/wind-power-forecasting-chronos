@@ -1,3 +1,7 @@
+import json
+import os
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -150,3 +154,34 @@ def test_save_results_writes_string_keys_and_null_for_nan(tmp_path):
     got = json.loads((tmp_path / "r.json").read_text())
     assert list(got) == ["6"] and got["6"]["wql"] is None
     assert set(got["6"]) == {"mae", "rmse", "mase", "mase_turbines", "n_valid", "wql"} and got["6"]["n_valid"] == 6
+
+
+def test_last_value_fill_only_fills_nan_and_zeroes_a_leading_gap():
+    dense = np.array([[np.nan, 5.0, np.nan, np.nan, 7.0], [1.0, 2.0, 3.0, 4.0, 5.0]])
+    got = metrics.last_value_fill(dense)
+    np.testing.assert_array_equal(got, [[0.0, 5.0, 5.0, 5.0, 7.0], [1.0, 2.0, 3.0, 4.0, 5.0]])
+
+
+def test_persistence_repeats_the_last_filled_reading_before_the_origin():
+    dense = np.array([[1.0, 2.0, np.nan, 4.0, 5.0, 6.0]])
+    pred = metrics.persistence_forecast(dense, np.array([3, 5]), horizon=2)
+    # origin 3: reading 2 is NaN -> filled with 2.0; origin 5: reading 4 is 5.0
+    np.testing.assert_array_equal(pred, [[[2.0, 2.0], [5.0, 5.0]]])
+
+
+REPO = Path(__file__).resolve().parents[1]
+CLEAN = Path(os.environ.get("DS_CLEAN_PARQUET", REPO / "data" / "sdwpf" / "clean.parquet"))
+SMOKE = REPO / "results" / "ds04_smoke_persistence_val.json"
+
+
+@pytest.mark.skipif(not CLEAN.exists(), reason="run python -m wpf.data.sdwpf first (data/sdwpf/clean.parquet)")
+def test_persistence_smoke_run_reproduces_the_committed_json(tmp_path, monkeypatch):
+    monkeypatch.setattr("sys.argv", ["metrics", "--clean", str(CLEAN), "--splits", str(REPO / "results" / "ds02_splits.json"),
+                                     "--out", str(tmp_path / "smoke.json")])
+    metrics.main()
+    got, want = json.loads((tmp_path / "smoke.json").read_text()), json.loads(SMOKE.read_text())
+    assert got.keys() == want.keys() == {"6", "36", "64"}
+    for h in want:
+        for k in ("mae", "rmse", "mase"):
+            assert got[h][k] == pytest.approx(want[h][k], rel=1e-9)
+        assert got[h]["n_valid"] == want[h]["n_valid"] and got[h]["mase_turbines"] == 134
