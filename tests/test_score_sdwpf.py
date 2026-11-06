@@ -54,3 +54,23 @@ def test_score_file_reads_val_and_test_arrays(data, tmp_path):
     out = score_sdwpf.score_file(patv, valid, split, tmp_path / "run_pred.npz")
     assert set(out) == {"val", "test"} and list(out["val"]) == ["6"]
     assert out["test"]["6"]["n_valid"] == int(valid[:, [o + k for o in splits.eval_origins(split, "test") for k in range(6)]].sum())
+
+
+def test_score_file_uses_quantile_arrays_for_wql(data, tmp_path):
+    patv, valid, split = data
+    y, v, _ = metrics.eval_inputs(patv, valid, split, "val")
+    median = np.nan_to_num(y[..., :12])
+    perfect = np.stack([median] * 3)  # every quantile equal to y: pinball 0 at every q
+    np.savez_compressed(tmp_path / "q_pred.npz", val=median.astype(np.float32), val_q=perfect.astype(np.float32),
+                        quantiles=np.float32([0.25, 0.5, 0.75]))
+    out = score_sdwpf.score_file(patv, valid, split, tmp_path / "q_pred.npz")
+    assert list(out) == ["val"]
+    assert out["val"]["6"]["wql"] == pytest.approx(0.0, abs=1e-6)  # float32 round trip of y
+    assert out["val"]["6"]["mae"] == pytest.approx(0.0, abs=1e-3)  # kW, float32 round trip
+    shifted = perfect + np.array([-10.0, 0.0, 10.0])[:, None, None, None]
+    np.savez_compressed(tmp_path / "q2_pred.npz", val=median.astype(np.float32), val_q=shifted.astype(np.float32),
+                        quantiles=np.float32([0.25, 0.5, 0.75]))
+    res = score_sdwpf.score_file(patv, valid, split, tmp_path / "q2_pred.npz")["val"]["6"]
+    y6, v6 = y[..., :6], v[..., :6]
+    assert res["wql"] == pytest.approx(metrics.wql(shifted[..., :6], y6, v6, (0.25, 0.5, 0.75)), rel=1e-5)  # file is float32
+    assert res["wql"] > 0
