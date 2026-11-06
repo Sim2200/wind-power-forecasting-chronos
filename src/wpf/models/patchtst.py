@@ -8,6 +8,11 @@ Flow for an input of shape (B, L, C):
 
 Official ETTh1 setting: L=336, P=16, stride 8 (N=42), D=16, 4 heads, d_ff=128,
 3 layers, dropout 0.3, head_dropout 0, RevIN without affine.
+
+Quantile head (PT-02): with `n_quantiles` = Q > 0 the linear head emits Q values per step, (B, H, C, Q). The
+first is the lowest quantile and the others are softplus increments added cumulatively, so the quantiles
+never cross; RevIN denorm is applied to every quantile with the window's statistics. Q = 0 keeps the
+point head and the ETTh1 behaviour unchanged.
 """
 from __future__ import annotations
 
@@ -40,6 +45,7 @@ class PatchTSTConfig:
     revin_affine: bool = False  # the official ETTh1 runs use `--affine 0`
     # Ablation (paper Table 6): False mixes channels, i.e. one token holds all C variables of a patch.
     channel_independent: bool = True
+    n_quantiles: int = 0  # 0: point forecast (B, H, C); Q > 0: non-crossing quantiles (B, H, C, Q)
 
 
 class MultiheadAttention(nn.Module):
@@ -110,7 +116,8 @@ class PatchTST(nn.Module):
         self.patcher = Patcher(cfg.patch_len, cfg.stride)
         self.n_patches = num_patches(cfg.seq_len, cfg.patch_len, cfg.stride)
         token_size = cfg.patch_len if cfg.channel_independent else cfg.patch_len * cfg.n_vars
-        head_out = cfg.pred_len if cfg.channel_independent else cfg.pred_len * cfg.n_vars
+        self.per_step = max(cfg.n_quantiles, 1)
+        head_out = cfg.pred_len * self.per_step * (1 if cfg.channel_independent else cfg.n_vars)
         self.embed = nn.Linear(token_size, cfg.d_model)
         self.pos = nn.Parameter(torch.empty(self.n_patches, cfg.d_model).uniform_(-0.02, 0.02))
         self.embed_dropout = nn.Dropout(cfg.dropout)
@@ -124,7 +131,7 @@ class PatchTST(nn.Module):
         _LOG.debug("n_patches=%s parameters=%s", self.n_patches, self.num_parameters())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """(B, L, C) -> (B, H, C)."""
+        """(B, L, C) -> (B, H, C), or (B, H, C, Q) with `n_quantiles` = Q > 0."""
         if self.revin is not None:
             x = self.revin(x, "norm")
         z = self.patcher(x.transpose(1, 2))  # (B, C, N, P)
@@ -138,10 +145,17 @@ class PatchTST(nn.Module):
             z, scores = layer(z, scores)
         if self.cfg.channel_independent:
             z = split_channels(z, self.cfg.n_vars)  # (B, C, N, D)
-            y = self.head(z.transpose(2, 3))  # flatten (D, N) -> Linear -> (B, C, H)
+            y = self.head(z.transpose(2, 3))  # flatten (D, N) -> Linear -> (B, C, H * per_step)
         else:
-            y = self.head(z.transpose(1, 2)).view(-1, self.cfg.n_vars, self.cfg.pred_len)  # (B, C, H)
-        y = y.transpose(1, 2)  # (B, H, C)
+            y = self.head(z.transpose(1, 2))  # (B, C * H * per_step)
+        y = y.view(-1, self.cfg.n_vars, self.cfg.pred_len, self.per_step)  # (B, C, H, Q or 1)
+        if self.cfg.n_quantiles:
+            y = torch.cat([y[..., :1], y[..., :1] + torch.cumsum(F.softplus(y[..., 1:]), dim=-1)], dim=-1)
+            y = y.permute(3, 0, 2, 1)  # (Q, B, H, C): RevIN's (B, 1, C) statistics broadcast over Q
+            if self.revin is not None:
+                y = self.revin(y, "denorm")
+            return y.permute(1, 2, 3, 0)  # (B, H, C, Q)
+        y = y[..., 0].transpose(1, 2)  # (B, H, C)
         if self.revin is not None:
             y = self.revin(y, "denorm")
         return y
