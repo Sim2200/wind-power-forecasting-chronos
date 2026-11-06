@@ -18,6 +18,8 @@ The Chronos training subsets are exported as GluonTS Arrow files by `python -m w
 
 `python -m wpf.train_sdwpf --config configs/sdwpf_5pct.json --out output/sdwpf_5pct.json` trains one PatchTST shared across the 134 turbines on a training subset (`fraction` 0.05 / 0.25 / 1.0 in `configs/sdwpf_*.json`), with a masked loss over valid target steps, early stopping on the shared validation origins, and one scoring of the test origins at the end. The SDWPF configs set `quantiles` (0.1 to 0.9), so the model has a non-crossing quantile head trained with the pinball loss and the median is the point forecast; leave `quantiles` out for a point head trained with MSE. It writes the result JSON (with the shared DS-04 metrics for val and test), the best weights (`.pt`) and the kW predictions (`_pred.npz`: `val` and `test` medians of shape turbines x origins x 64, `val_q` and `test_q` with a leading quantile axis, and `quantiles`). `python -m wpf.score_sdwpf --pred output/sdwpf_5pct_pred.npz --name patchtst_5pct --out results/` scores such a file with `wpf.metrics` and writes `results/patchtst_5pct_val.json` and `_test.json`, the per-model result files. On Zaratan: `CFG=sdwpf_5pct sbatch slurm/sdwpf.sbatch` (`sdwpf_smoke` for a two-epoch check).
 
+Head design (PT-03): `configs/sdwpf_100pct_h6.json` and `_h36.json` train one model per horizon on the full data; `python -m wpf.head_design --shared results/pt03_100pct.json --h6 results/pt03_100pct_h6.json --h36 results/pt03_100pct_h36.json` compares them with the shared 64-step head on validation WQL and writes the chosen design to `results/pt03_head_design.json`.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).
