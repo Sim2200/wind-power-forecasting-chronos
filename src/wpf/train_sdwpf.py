@@ -131,8 +131,9 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     model_cfg = PatchTSTConfig(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, n_quantiles=len(cfg.quantiles or ()), **cfg.model)
 
     def criterion(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """pred (..., H) or (..., H, Q) against y and mask (..., H), without the channel axis."""
-        return masked_mse(pred, y, mask) if quantiles is None else masked_pinball(pred, y, mask, quantiles)
+        """pred (..., H) or (..., H, Q) against y and mask (..., H), without the channel axis; training batches are on
+        the device, the validation arrays on the CPU."""
+        return masked_mse(pred, y, mask) if quantiles is None else masked_pinball(pred, y, mask, quantiles.to(pred.device))
 
     model = PatchTST(model_cfg).to(cfg.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
