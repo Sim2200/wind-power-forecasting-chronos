@@ -1,0 +1,147 @@
+{
+  "config": {
+    "clean_path": "data/sdwpf/clean.parquet",
+    "splits_path": "results/ds02_splits.json",
+    "fraction": 0.05,
+    "pred_len": 64,
+    "train_stride": 1,
+    "model": {
+      "d_model": 128,
+      "n_heads": 16,
+      "d_ff": 256,
+      "n_layers": 3,
+      "dropout": 0.2
+    },
+    "batch_size": 128,
+    "eval_batch_size": 1024,
+    "learning_rate": 0.0001,
+    "epochs": 30,
+    "patience": 5,
+    "seed": 2021,
+    "num_workers": 0,
+    "device": "cuda"
+  },
+  "model": {
+    "seq_len": 288,
+    "pred_len": 64,
+    "n_vars": 1,
+    "patch_len": 16,
+    "stride": 8,
+    "d_model": 128,
+    "n_heads": 16,
+    "d_ff": 256,
+    "n_layers": 3,
+    "dropout": 0.2,
+    "head_dropout": 0.0,
+    "revin": true,
+    "revin_affine": false,
+    "channel_independent": true
+  },
+  "parameters": 699200,
+  "train_windows": 116166,
+  "scaler": {
+    "mean": 262.2185974121094,
+    "std": 244.24415588378906
+  },
+  "best_val_mse": 3.11730694770813,
+  "best_epoch": 1,
+  "epochs_run": 6,
+  "train_seconds": 189.8,
+  "val": {
+    "6": {
+      "mae": 164.3542310381512,
+      "rmse": 228.65390653748094,
+      "mase": 0.3909405973216415,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": null
+    },
+    "36": {
+      "mae": 288.436104410354,
+      "rmse": 391.4989115689894,
+      "mase": 0.6851251843619721,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": null
+    },
+    "64": {
+      "mae": 323.21635027617805,
+      "rmse": 431.23496534240667,
+      "mase": 0.7676869787230536,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": null
+    }
+  },
+  "test": {
+    "6": {
+      "mae": 176.4186226904134,
+      "rmse": 242.23028156499603,
+      "mase": 0.4211111298530729,
+      "mase_turbines": 134,
+      "n_valid": 111463,
+      "wql": null
+    },
+    "36": {
+      "mae": 293.5138767457879,
+      "rmse": 401.2838771420338,
+      "mase": 0.6972524666833237,
+      "mase_turbines": 134,
+      "n_valid": 692237,
+      "wql": null
+    },
+    "64": {
+      "mae": 337.9962140026498,
+      "rmse": 459.3266342995482,
+      "mase": 0.8028918200897603,
+      "mase_turbines": 134,
+      "n_valid": 1230308,
+      "wql": null
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_mse": 0.5175215985046858,
+      "val_mse": 3.11730694770813,
+      "lr": 0.0001,
+      "seconds": 31.4
+    },
+    {
+      "epoch": 2,
+      "train_mse": 0.31870122570975745,
+      "val_mse": 3.2845699787139893,
+      "lr": 0.0001,
+      "seconds": 62.5
+    },
+    {
+      "epoch": 3,
+      "train_mse": 0.26177083512782523,
+      "val_mse": 3.3134453296661377,
+      "lr": 0.0001,
+      "seconds": 93.4
+    },
+    {
+      "epoch": 4,
+      "train_mse": 0.2324702421648894,
+      "val_mse": 3.2356679439544678,
+      "lr": 9e-05,
+      "seconds": 124.4
+    },
+    {
+      "epoch": 5,
+      "train_mse": 0.21357863320011025,
+      "val_mse": 3.272322416305542,
+      "lr": 8.1e-05,
+      "seconds": 155.3
+    },
+    {
+      "epoch": 6,
+      "train_mse": 0.20079871601411764,
+      "val_mse": 3.220503807067871,
+      "lr": 7.290000000000001e-05,
+      "seconds": 186.2
+    }
+  ],
+  "device": "cuda"
+}

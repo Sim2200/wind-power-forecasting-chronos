@@ -1,0 +1,7 @@
+{
+  "fraction": 0.05,
+  "train_stride": 1,
+  "epochs": 30,
+  "patience": 5,
+  "model": {"d_model": 128, "n_heads": 16, "d_ff": 256, "n_layers": 3, "dropout": 0.2}
+}
