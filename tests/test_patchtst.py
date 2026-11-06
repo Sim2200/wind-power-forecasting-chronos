@@ -63,3 +63,21 @@ def test_revin_restores_scale():
     x = torch.randn(2, SEQ_LEN, 7)
     offset = 100.0
     assert torch.allclose(model(x + offset), model(x) + offset, atol=1e-2)
+
+
+def test_channel_mixing_couples_channels():
+    # with channel mixing, changing one input channel changes the forecast of another
+    torch.manual_seed(0)
+    model = PatchTST(PatchTSTConfig(n_vars=3, channel_independent=False)).eval()
+    x = torch.randn(2, SEQ_LEN, 3)
+    x2 = x.clone()
+    x2[..., 0] += 1.0
+    y, y2 = model(x), model(x2)
+    assert y.shape == (2, 96, 3)
+    assert not torch.allclose(y[..., 1], y2[..., 1])
+
+
+def test_no_patching_uses_one_token_per_step():
+    model = PatchTST(PatchTSTConfig(patch_len=1, stride=1)).eval()
+    assert model.n_patches == SEQ_LEN + 1  # official end-padding adds one patch
+    assert model(torch.randn(2, SEQ_LEN, 7)).shape == (2, 96, 7)

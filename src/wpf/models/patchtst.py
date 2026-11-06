@@ -38,6 +38,8 @@ class PatchTSTConfig:
     head_dropout: float = 0.0
     revin: bool = True
     revin_affine: bool = False  # the official ETTh1 runs use `--affine 0`
+    # Ablation (paper Table 6): False mixes channels, i.e. one token holds all C variables of a patch.
+    channel_independent: bool = True
 
 
 class MultiheadAttention(nn.Module):
@@ -107,7 +109,9 @@ class PatchTST(nn.Module):
         self.revin = RevIN(cfg.n_vars, affine=cfg.revin_affine) if cfg.revin else None
         self.patcher = Patcher(cfg.patch_len, cfg.stride)
         self.n_patches = num_patches(cfg.seq_len, cfg.patch_len, cfg.stride)
-        self.embed = nn.Linear(cfg.patch_len, cfg.d_model)
+        token_size = cfg.patch_len if cfg.channel_independent else cfg.patch_len * cfg.n_vars
+        head_out = cfg.pred_len if cfg.channel_independent else cfg.pred_len * cfg.n_vars
+        self.embed = nn.Linear(token_size, cfg.d_model)
         self.pos = nn.Parameter(torch.empty(self.n_patches, cfg.d_model).uniform_(-0.02, 0.02))
         self.embed_dropout = nn.Dropout(cfg.dropout)
         self.layers = nn.ModuleList(
@@ -115,7 +119,7 @@ class PatchTST(nn.Module):
         )
         # The flattened (D x N) size fixes the input length: seq_len cannot change after construction.
         self.head = nn.Sequential(
-            nn.Flatten(start_dim=-2), nn.Linear(cfg.d_model * self.n_patches, cfg.pred_len), nn.Dropout(cfg.head_dropout)
+            nn.Flatten(start_dim=-2), nn.Linear(cfg.d_model * self.n_patches, head_out), nn.Dropout(cfg.head_dropout)
         )
         _LOG.debug("n_patches=%s parameters=%s", self.n_patches, self.num_parameters())
 
@@ -124,14 +128,19 @@ class PatchTST(nn.Module):
         if self.revin is not None:
             x = self.revin(x, "norm")
         z = self.patcher(x.transpose(1, 2))  # (B, C, N, P)
-        z = self.embed(z)  # (B, C, N, D)
-        z = merge_channels(z)  # (B*C, N, D): channel independence
+        if self.cfg.channel_independent:
+            z = merge_channels(self.embed(z))  # (B*C, N, D): every channel is its own sequence
+        else:
+            z = self.embed(z.permute(0, 2, 1, 3).flatten(-2))  # (B, N, C*P) -> (B, N, D)
         z = self.embed_dropout(z + self.pos)
         scores = None
         for layer in self.layers:
             z, scores = layer(z, scores)
-        z = split_channels(z, self.cfg.n_vars)  # (B, C, N, D)
-        y = self.head(z.transpose(2, 3))  # flatten (D, N) -> Linear -> (B, C, H)
+        if self.cfg.channel_independent:
+            z = split_channels(z, self.cfg.n_vars)  # (B, C, N, D)
+            y = self.head(z.transpose(2, 3))  # flatten (D, N) -> Linear -> (B, C, H)
+        else:
+            y = self.head(z.transpose(1, 2)).view(-1, self.cfg.n_vars, self.cfg.pred_len)  # (B, C, H)
         y = y.transpose(1, 2)  # (B, H, C)
         if self.revin is not None:
             y = self.revin(y, "denorm")
