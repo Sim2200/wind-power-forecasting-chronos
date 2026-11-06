@@ -4,6 +4,7 @@ import pytest
 
 torch = pytest.importorskip("torch")
 
+from wpf import score_sdwpf
 from wpf import train_sdwpf as T
 from wpf.data import splits
 from wpf.models.patchtst import PatchTST, PatchTSTConfig
@@ -23,15 +24,6 @@ def test_predict_returns_turbines_by_origins_by_horizon():
     out = T.predict(model, x, batch_size=4, device="cpu")
     assert out.shape == (3, 5, 6)
     np.testing.assert_allclose(out, T.predict(model, x, batch_size=100, device="cpu"), atol=1e-6)
-
-
-def test_kw_metrics_mask_and_horizons():
-    pred = np.zeros((1, 1, 6))
-    y = np.arange(6, dtype=float).reshape(1, 1, 6)
-    mask = np.array([[[True, False, True, True, True, True]]])
-    out = T.kw_metrics(pred, y, mask, horizons=(2, 6))
-    assert out["2"] == {"mae": 0.0, "rmse": 0.0, "n_valid": 1}
-    assert out["6"]["mae"] == pytest.approx((0 + 2 + 3 + 4 + 5) / 5) and out["6"]["n_valid"] == 5
 
 
 def _synthetic_clean(path, split, n_turbines=3, seed=0):
@@ -69,5 +61,9 @@ def test_short_run_on_synthetic_data(tmp_path):
         assert f["val"].shape == (3, n_origins["val"], 12) and f["test"].shape == (3, n_origins["test"], 12)
         assert np.isfinite(f["val"]).all() and np.isfinite(f["test"]).all()
     assert set(result["val"]) == set(result["test"]) == {"6"}  # the horizons of HORIZONS that fit H = 12
-    assert result["val"]["6"]["n_valid"] > 0 and result["test"]["6"]["mae"] > 0
+    assert set(result["val"]["6"]) == {"mae", "rmse", "mase", "mase_turbines", "n_valid", "wql"}  # the DS-04 layout
+    assert result["val"]["6"]["n_valid"] > 0 and result["test"]["6"]["mae"] > 0 and result["test"]["6"]["mase_turbines"] == 3
+    data = T.load_data(cfg)  # the trainer reports what the shared scorer gives for its saved predictions
+    rescored = score_sdwpf.score_file(data.patv, data.valid, split, pred_path)
+    assert rescored["test"]["6"]["mae"] == pytest.approx(result["test"]["6"]["mae"], rel=1e-5)
     assert (tmp_path / "run.pt").exists()

@@ -6,9 +6,10 @@ best checkpoint restored) and the verified `PatchTST` model with one channel. Di
 - Validation: the 99 shared origins x 134 turbines of DS-02, masked MSE in scaled units. The same windows give
   the reported val metrics, so early stopping and model selection use the numbers that are reported.
 - Test: scored once with the best weights, after training. Nothing in the loop sees it.
-- Output: the result JSON (config, best epoch, history, masked MAE / RMSE in kW on the first 6 / 36 / 64 steps
-  for val and test) and, next to it, the kW predictions `<out>_pred.npz` with `val` and `test` arrays of shape
-  (turbines, origins, H) so the shared evaluation code (DS-04) scores them like every other model.
+- Output: the result JSON (config, best epoch, history, and the shared DS-04 metrics of `wpf.score_sdwpf` for val
+  and test: MAE / RMSE in kW, MASE, n_valid on the first 6 / 36 / 64 steps) and, next to it, the kW predictions
+  `<out>_pred.npz` with `val` and `test` arrays of shape (turbines, origins, H), which `python -m wpf.score_sdwpf`
+  turns into the `results/<name>_<period>.json` files every model commits.
 
 Usage:
     python -m wpf.train_sdwpf --config configs/sdwpf_5pct.json --out output/sdwpf_5pct.json
@@ -26,6 +27,7 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
+from wpf import score_sdwpf
 from wpf.data import sdwpf, sdwpf_windows, splits
 from wpf.models.patchtst import PatchTST, PatchTSTConfig
 from wpf.train import EarlyStopping, lr_type3, set_seed
@@ -54,6 +56,7 @@ class TrainConfig:
 @dataclass
 class Data:
     series: np.ndarray  # filled and scaled, (turbines, steps)
+    patv: np.ndarray  # as read, kW with NaN for missing; the shared metrics score against this
     valid: np.ndarray
     scaler: sdwpf_windows.Scaler
     split: splits.Split
@@ -69,7 +72,7 @@ def load_data(cfg: TrainConfig) -> Data:
         raise ValueError(f"{cfg.clean_path} has {patv.shape[1]} steps per turbine, the split expects {split.n_steps}")
     scaler = sdwpf_windows.fit_scaler(patv, valid, splits.subset_range(split, cfg.fraction))
     series = scaler.transform(sdwpf_windows.fill_missing(patv)).astype(np.float32)
-    return Data(series=series, valid=valid, scaler=scaler, split=split)
+    return Data(series=series, patv=patv.astype(np.float64), valid=valid, scaler=scaler, split=split)
 
 
 def masked_mse(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -92,15 +95,6 @@ def predict(model: torch.nn.Module, x: np.ndarray, batch_size: int, device: str)
     out = [model(flat[i : i + batch_size].to(device)).cpu() for i in range(0, len(flat), batch_size)]
     return torch.cat(out)[..., 0].numpy().reshape(x.shape[0], x.shape[1], -1)
 
-
-def kw_metrics(pred_kw: np.ndarray, y_kw: np.ndarray, mask: np.ndarray, horizons: tuple[int, ...] = splits.HORIZONS) -> dict:
-    """Masked MAE and RMSE in kW over the first H steps, for a quick look; DS-04 is the shared scorer."""
-    out = {}
-    for h in horizons:
-        m = mask[..., :h]
-        err = (pred_kw[..., :h] - y_kw[..., :h])[m]
-        out[str(h)] = {"mae": float(np.abs(err).mean()), "rmse": float(np.sqrt((err**2).mean())), "n_valid": int(m.sum())}
-    return out
 
 
 def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, save_pred: str | Path | None = None) -> dict:
@@ -141,11 +135,10 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     if save_weights is not None:
         torch.save(stopper.best_state, save_weights)
     scores, preds = {}, {}
-    horizons = tuple(h for h in splits.HORIZONS if h <= cfg.pred_len)
     for period, arrays in (("val", val), ("test", sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "test", cfg.pred_len))):
         pred_kw = data.scaler.inverse(predict(model, arrays["x"], cfg.eval_batch_size, cfg.device))
         preds[period] = pred_kw.astype(np.float32)
-        scores[period] = kw_metrics(pred_kw, data.scaler.inverse(arrays["y"]), arrays["mask"], horizons)
+        scores[period] = score_sdwpf.score(data.patv, data.valid, data.split, pred_kw.astype(np.float64), period)
     if save_pred is not None:
         np.savez_compressed(save_pred, **preds)
     return {
@@ -178,8 +171,11 @@ def main() -> None:
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     result = train(load_config(a.config), save_weights=out.with_suffix(".pt"), save_pred=out.with_name(out.stem + "_pred.npz"))
+    for period in ("val", "test"):  # NaN (no WQL for a point model) is not JSON; write null like metrics.save_results
+        result[period] = {h: {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in r.items()} for h, r in result[period].items()}
     out.write_text(json.dumps(result, indent=2))
-    print(f"val mae kW {result['val']['64']['mae']:.1f} test mae kW {result['test']['64']['mae']:.1f} (H=64) -> {out}")
+    h = str(max(int(k) for k in result["val"]))
+    print(f"val mae kW {result['val'][h]['mae']:.1f} mase {result['val'][h]['mase']:.3f}, test mae kW {result['test'][h]['mae']:.1f} (H={h}) -> {out}")
 
 
 if __name__ == "__main__":
