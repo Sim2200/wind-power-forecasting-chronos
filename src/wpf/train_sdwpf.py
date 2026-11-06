@@ -2,14 +2,17 @@
 
 Reuses the ETTh1 recipe from `wpf.train` (Adam 1e-4, batch 128, the 'type3' schedule, early stopping with the
 best checkpoint restored) and the verified `PatchTST` model with one channel. Differences for SDWPF:
-- Loss: MSE over the valid target steps only (`sdwpf_windows` decisions). Batches always have at least one.
+- Loss: over the valid target steps only (`sdwpf_windows` decisions); batches always have at least one. With
+  `quantiles` set the model has a Q-quantile head trained with the pinball loss averaged over quantiles and the
+  median is the point forecast; without it the point head is trained with MSE.
 - Validation: the 99 shared origins x 134 turbines of DS-02, masked MSE in scaled units. The same windows give
   the reported val metrics, so early stopping and model selection use the numbers that are reported.
 - Test: scored once with the best weights, after training. Nothing in the loop sees it.
 - Output: the result JSON (config, best epoch, history, and the shared DS-04 metrics of `wpf.score_sdwpf` for val
   and test: MAE / RMSE in kW, MASE, n_valid on the first 6 / 36 / 64 steps) and, next to it, the kW predictions
-  `<out>_pred.npz` with `val` and `test` arrays of shape (turbines, origins, H), which `python -m wpf.score_sdwpf`
-  turns into the `results/<name>_<period>.json` files every model commits.
+  `<out>_pred.npz` with `val` and `test` arrays of shape (turbines, origins, H) (the median for a quantile model,
+  plus `val_q` / `test_q` of shape (Q, turbines, origins, H) and `quantiles`), which `python -m wpf.score_sdwpf`
+  turns into the `results/<name>_<period>.json` files every model commits, WQL included.
 
 Usage:
     python -m wpf.train_sdwpf --config configs/sdwpf_5pct.json --out output/sdwpf_5pct.json
@@ -41,6 +44,7 @@ class TrainConfig:
     splits_path: str = "results/ds02_splits.json"
     fraction: float = 1.0  # training subset: 0.05, 0.25 or 1.0
     pred_len: int = 64
+    quantiles: list[float] | None = None  # e.g. [0.1, ..., 0.9]: quantile head + pinball loss; None: point head + MSE
     train_stride: int = 1  # origins every n steps inside the subset; raise it to cut epoch cost
     model: dict = field(default_factory=dict)  # overrides for `PatchTSTConfig`
     batch_size: int = 128
@@ -80,6 +84,20 @@ def masked_mse(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch
     return ((pred - y) ** 2 * mask).sum() / mask.sum()
 
 
+def masked_pinball(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor, quantiles: torch.Tensor) -> torch.Tensor:
+    """Pinball loss of `pred` (..., Q) against `y` (...), averaged over the quantiles and the steps where `mask` is 1."""
+    gap = y[..., None] - pred
+    loss = torch.maximum(quantiles * gap, (quantiles - 1.0) * gap).mean(-1)
+    return (loss * mask).sum() / mask.sum()
+
+
+def median_index(quantiles: list[float]) -> int:
+    """Position of the median in `quantiles`; the point forecast of a quantile model."""
+    if 0.5 not in quantiles:
+        raise ValueError("quantiles must include 0.5, the median is the point forecast")
+    return quantiles.index(0.5)
+
+
 def make_train_loader(cfg: TrainConfig, data: Data) -> DataLoader:
     index = sdwpf_windows.train_index(data.valid, data.split, cfg.fraction, cfg.pred_len, cfg.train_stride)
     dataset = sdwpf_windows.SDWPFWindows(data.series, data.valid, index, cfg.pred_len)
@@ -89,11 +107,13 @@ def make_train_loader(cfg: TrainConfig, data: Data) -> DataLoader:
 
 @torch.no_grad()
 def predict(model: torch.nn.Module, x: np.ndarray, batch_size: int, device: str) -> np.ndarray:
-    """Forecasts for x of shape (turbines, origins, L), returned as (turbines, origins, H) in scaled units."""
+    """Forecasts for x of shape (turbines, origins, L) in scaled units: (turbines, origins, H), or (..., H, Q) for a
+    quantile model."""
     model.eval()
     flat = torch.from_numpy(x.reshape(-1, x.shape[-1], 1))
-    out = [model(flat[i : i + batch_size].to(device)).cpu() for i in range(0, len(flat), batch_size)]
-    return torch.cat(out)[..., 0].numpy().reshape(x.shape[0], x.shape[1], -1)
+    out = torch.cat([model(flat[i : i + batch_size].to(device)).cpu() for i in range(0, len(flat), batch_size)])
+    out = out[:, :, 0]  # drop the channel axis: (B, H) or (B, H, Q)
+    return out.numpy().reshape(x.shape[0], x.shape[1], *out.shape[1:])
 
 
 
@@ -105,7 +125,15 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     train_loader = make_train_loader(cfg, data)
     val = sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "val", cfg.pred_len)
     val_y, val_mask = torch.from_numpy(val["y"]), torch.from_numpy(val["mask"].astype(np.float32))
-    model_cfg = PatchTSTConfig(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, **cfg.model)
+    quantiles = torch.tensor(cfg.quantiles, dtype=torch.float32, device=cfg.device) if cfg.quantiles else None
+    if quantiles is not None:
+        median_index(cfg.quantiles)
+    model_cfg = PatchTSTConfig(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, n_quantiles=len(cfg.quantiles or ()), **cfg.model)
+
+    def criterion(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """pred (..., H) or (..., H, Q) against y and mask (..., H), without the channel axis."""
+        return masked_mse(pred, y, mask) if quantiles is None else masked_pinball(pred, y, mask, quantiles)
+
     model = PatchTST(model_cfg).to(cfg.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
     stopper = EarlyStopping(cfg.patience)
@@ -116,14 +144,14 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         total = torch.zeros((), device=cfg.device)
         for x, y, mask in train_loader:
             optimizer.zero_grad()
-            loss = masked_mse(model(x.to(cfg.device)), y.to(cfg.device), mask.to(cfg.device))
+            loss = criterion(model(x.to(cfg.device))[:, :, 0], y[..., 0].to(cfg.device), mask[..., 0].to(cfg.device))
             loss.backward()
             optimizer.step()
             total += loss.detach()
         train_loss = total.item() / len(train_loader)
         val_pred = torch.from_numpy(predict(model, val["x"], cfg.eval_batch_size, cfg.device))
-        val_loss = masked_mse(val_pred, val_y, val_mask).item()
-        history.append({"epoch": epoch, "train_mse": train_loss, "val_mse": val_loss, "lr": optimizer.param_groups[0]["lr"],
+        val_loss = criterion(val_pred, val_y, val_mask).item()
+        history.append({"epoch": epoch, "train_loss": train_loss, "val_loss": val_loss, "lr": optimizer.param_groups[0]["lr"],
                         "seconds": round(time.time() - t0, 1)})
         log(json.dumps(history[-1]))
         if stopper.step(val_loss, epoch, model):
@@ -136,10 +164,18 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         torch.save(stopper.best_state, save_weights)
     scores, preds = {}, {}
     for period, arrays in (("val", val), ("test", sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "test", cfg.pred_len))):
-        pred_kw = data.scaler.inverse(predict(model, arrays["x"], cfg.eval_batch_size, cfg.device))
+        pred_kw = data.scaler.inverse(predict(model, arrays["x"], cfg.eval_batch_size, cfg.device)).astype(np.float64)
+        quantile_kw = None
+        if quantiles is not None:
+            quantile_kw = np.moveaxis(pred_kw, -1, 0)  # (Q, turbines, origins, H), the layout of metrics.wql
+            pred_kw = quantile_kw[median_index(cfg.quantiles)]
+            preds[period + "_q"] = quantile_kw.astype(np.float32)
         preds[period] = pred_kw.astype(np.float32)
-        scores[period] = score_sdwpf.score(data.patv, data.valid, data.split, pred_kw.astype(np.float64), period)
+        scores[period] = score_sdwpf.score(data.patv, data.valid, data.split, pred_kw, period, quantile_pred=quantile_kw,
+                                           quantiles=tuple(cfg.quantiles or ()))
     if save_pred is not None:
+        if quantiles is not None:
+            preds["quantiles"] = np.asarray(cfg.quantiles, dtype=np.float32)
         np.savez_compressed(save_pred, **preds)
     return {
         "config": asdict(cfg),
@@ -147,7 +183,8 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         "parameters": model.num_parameters(),
         "train_windows": len(train_loader.dataset),
         "scaler": asdict(data.scaler),
-        "best_val_mse": stopper.best,
+        "loss": "pinball" if quantiles is not None else "mse",
+        "best_val_loss": stopper.best,
         "best_epoch": stopper.best_epoch,
         "epochs_run": len(history),
         "train_seconds": round(time.time() - t0, 1),
@@ -175,7 +212,8 @@ def main() -> None:
         result[period] = {h: {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in r.items()} for h, r in result[period].items()}
     out.write_text(json.dumps(result, indent=2))
     h = str(max(int(k) for k in result["val"]))
-    print(f"val mae kW {result['val'][h]['mae']:.1f} mase {result['val'][h]['mase']:.3f}, test mae kW {result['test'][h]['mae']:.1f} (H={h}) -> {out}")
+    v, t = result["val"][h], result["test"][h]
+    print(f"val mae kW {v['mae']:.1f} mase {v['mase']:.3f} wql {v['wql']}, test mae kW {t['mae']:.1f} wql {t['wql']} (H={h}) -> {out}")
 
 
 if __name__ == "__main__":
