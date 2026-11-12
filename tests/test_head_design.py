@@ -19,6 +19,8 @@ def test_shared_wins_unless_every_added_model_beats_it_by_the_margin():
     assert out["horizons"]["6"]["wql_gain"] == pytest.approx((0.30 - 0.28) / 0.30)
     assert out["horizons"]["64"]["per_horizon"] == out["horizons"]["64"]["shared"]
     assert out["train_seconds"] == {"shared": 300, "per_horizon": 600}
+    assert out["su"] == {"shared": pytest.approx(300 / 3600 * 7, abs=0.01), "per_horizon": pytest.approx(600 / 3600 * 7, abs=0.01)}
+    assert head_design.compare(shared, {6: h6, 36: h36, 64: shared}, su_per_hour=48)["su"]["shared"] == 4.0
     close = _record({6: 0.299})  # within the margin at H = 6 -> shared
     assert head_design.compare(shared, {6: close, 36: h36, 64: shared})["chosen"] == "shared"
     worse = _record({36: 0.65})

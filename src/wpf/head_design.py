@@ -8,6 +8,8 @@ Two designs, full training data, one seed:
 Rule: `per_horizon` is chosen only if its validation WQL is lower than the shared head's by more than `margin`
 (relative) at every horizon it adds a model for (6 and 36). Otherwise the shared head wins: one model per grid cell
 instead of three, so a third of the training cost. Validation only; the test numbers in the run records are not read.
+The cost of each design is reported in SU from the records' training seconds at `su_per_hour` (7 for the A100 MIG
+slice the runs use, 48 for a full A100), a lower bound on the job's wall time.
 
 Usage:
     python -m wpf.head_design --shared results/pt03_100pct.json --h6 results/pt03_100pct_h6.json \
@@ -31,8 +33,9 @@ def _val(record: dict, horizon: int) -> dict:
     return record["val"][str(horizon)]
 
 
-def compare(shared: dict, per_horizon: dict[int, dict], margin: float = 0.02) -> dict:
-    """{chosen, margin, horizons: {H: {shared, per_horizon, wql_gain}}, cost: {...}} from `wpf.train_sdwpf` records.
+def compare(shared: dict, per_horizon: dict[int, dict], margin: float = 0.02, su_per_hour: float = 7.0) -> dict:
+    """{chosen, margin, horizons: {H: {shared, per_horizon, wql_gain}}, train_seconds, su, parameters} from
+    `wpf.train_sdwpf` records.
 
     `per_horizon` maps H to the record of the model trained with pred_len H; for the shared head's own H it may be
     the shared record itself.
@@ -49,9 +52,9 @@ def compare(shared: dict, per_horizon: dict[int, dict], margin: float = 0.02) ->
     chosen = "per_horizon" if better and all(better) else "shared"
     seconds = {"shared": shared["train_seconds"],
                "per_horizon": sum(r["train_seconds"] for r in {id(r): r for r in per_horizon.values()}.values())}
-    return {"chosen": chosen, "margin": margin, "horizons": horizons,
-            "train_seconds": seconds, "parameters": {"shared": shared["parameters"],
-                                                     "per_horizon": {str(h): r["parameters"] for h, r in per_horizon.items()}}}
+    return {"chosen": chosen, "margin": margin, "horizons": horizons, "train_seconds": seconds,
+            "su": {k: round(v / 3600 * su_per_hour, 2) for k, v in seconds.items()}, "su_per_hour": su_per_hour,
+            "parameters": {"shared": shared["parameters"], "per_horizon": {str(h): r["parameters"] for h, r in per_horizon.items()}}}
 
 
 def main() -> None:
@@ -60,18 +63,19 @@ def main() -> None:
     ap.add_argument("--h6", required=True, help="run record of the pred_len 6 model")
     ap.add_argument("--h36", required=True, help="run record of the pred_len 36 model")
     ap.add_argument("--margin", type=float, default=0.02)
+    ap.add_argument("--su-per-hour", type=float, default=7.0, help="7 for the A100 MIG slice, 48 for a full A100")
     ap.add_argument("--out", default="results/pt03_head_design.json")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     shared, h6, h36 = (json.loads(Path(p).read_text()) for p in (a.shared, a.h6, a.h36))
-    result = compare(shared, {6: h6, 36: h36, 64: shared}, a.margin)
+    result = compare(shared, {6: h6, 36: h36, 64: shared}, a.margin, a.su_per_hour)
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(json.dumps(result, indent=2) + "\n")
     _LOG.info("wrote %s", a.out)
     for h, r in result["horizons"].items():
         print(f"H={h}: shared wql {r['shared']['wql']:.4f} mase {r['shared']['mase']:.3f} | per-horizon wql "
               f"{r['per_horizon']['wql']:.4f} mase {r['per_horizon']['mase']:.3f} | gain {r['wql_gain']:+.1%}")
-    print("chosen:", result["chosen"])
+    print("chosen:", result["chosen"], "| SU:", result["su"])
 
 
 if __name__ == "__main__":

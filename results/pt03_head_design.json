@@ -55,6 +55,11 @@
     "shared": 915.2,
     "per_horizon": 2644.7
   },
+  "su": {
+    "shared": 1.78,
+    "per_horizon": 5.14
+  },
+  "su_per_hour": 7.0,
   "parameters": {
     "shared": 3059008,
     "per_horizon": {
