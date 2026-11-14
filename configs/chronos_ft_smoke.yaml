@@ -1,0 +1,28 @@
+# CF-01: full fine-tuning of Chronos on the DS-03 Arrow export (chronos/train_5pct.arrow).
+# Run from the chronos-forecasting clone: python scripts/training/train.py --config <this file>
+# (slurm/chronos_ft.sbatch does that and then scores checkpoint-final with wpf.chronos_eval).
+training_data_paths:
+- data/sdwpf/chronos/train_5pct.arrow
+probability:
+- 1.0
+# DS-02 windows: L = 288, H = 64; min_past = context_length so every sampled window has full history
+context_length: 288
+prediction_length: 64
+min_past: 288
+# Chronos paper fine-tuning recipe: 50 steps, lr 1e-3 annealed linearly to 0, batch 32
+max_steps: 50
+save_steps: 25
+log_steps: 10
+per_device_train_batch_size: 32
+gradient_accumulation_steps: 1
+learning_rate: 0.001
+lr_scheduler_type: linear
+warmup_ratio: 0.0
+model_id: amazon/chronos-t5-tiny
+model_type: seq2seq
+random_init: false
+tf32: true
+torch_compile: false
+dataloader_num_workers: 1
+seed: 2021
+output_dir: output/chronos/chronos_ft_smoke
