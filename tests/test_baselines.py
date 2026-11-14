@@ -26,7 +26,7 @@ def series():
 
 def test_persistence_repeats_the_last_valid_reading_not_the_last_reading(series):
     dense, valid = series
-    pred, no_valid = baselines.persistence(dense, valid, np.array([300, 310]), horizon=3)
+    pred, _ = baselines.persistence(dense, valid, np.array([300, 310]), horizon=3)
     assert pred.shape == (2, 2, 3)
     # origin 300: turbine 0 skips the flagged steps 295-299 and takes step 294; origin 310: step 309 is valid
     assert (pred[0, 0] == 294).all() and (pred[0, 1] == 309).all()
@@ -91,8 +91,16 @@ def test_committed_baseline_files_match_the_clean_data(tmp_path, monkeypatch):
     """Catches a stale result: if the DS-01 mask or the baselines change, regenerate with python -m wpf.baselines."""
     monkeypatch.setattr("sys.argv", ["baselines", "--clean", str(CLEAN), "--splits", str(REPO / "results" / "ds02_splits.json"), "--out", str(tmp_path)])
     baselines.main()
-    for name in FILES + COUNTS:
+    for name in COUNTS:
         assert json.loads((tmp_path / name).read_text()) == json.loads((REPO / "results" / name).read_text()), name
+    for name in FILES:  # metrics to 1e-9 relative: the last digit moves with the machine's summation order
+        got, want = json.loads((tmp_path / name).read_text()), json.loads((REPO / "results" / name).read_text())
+        assert got.keys() == want.keys() == {"6", "36", "64"}, name
+        for h in want:
+            for k in ("mae", "rmse", "mase"):
+                assert got[h][k] == pytest.approx(want[h][k], rel=1e-9), (name, h, k)
+            assert got[h]["n_valid"] == want[h]["n_valid"] and got[h]["mase_turbines"] == want[h]["mase_turbines"], (name, h)
+            assert got[h]["wql"] is None and want[h]["wql"] is None, (name, h)
     # same windows and mask as the DS-04 smoke run: the valid counts per horizon are identical
     smoke = json.loads((REPO / "results" / "ds04_smoke_persistence_val.json").read_text())
     got = json.loads((tmp_path / "baseline_persistence_val.json").read_text())
