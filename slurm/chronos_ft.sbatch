@@ -11,9 +11,8 @@
 #SBATCH --gpus=a100_1g.5gb:1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
 #SBATCH --time=04:00:00
-set -eo pipefail
+#SBATCH --output=slurm-%j.out
 cd "$SLURM_SUBMIT_DIR"
 source scripts/env.sh
 activate_env
@@ -26,7 +25,7 @@ case "$CFG" in *_nan) CONTEXT=nan ;; *) CONTEXT=keep ;; esac
 echo "$CFG on $(hostname), GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader), context $CONTEXT"
 
 T0=$SECONDS
-python "$CHRONOS_REPO/scripts/training/train.py" --config "configs/${CFG}.yaml"
+python "$CHRONOS_REPO/scripts/training/train.py" --config "configs/${CFG}.yaml" || { echo "train.py failed"; exit 1; }
 TRAIN_SECONDS=$((SECONDS - T0))
 RUN=$(ls -d "output/chronos/${CFG}"/run-* | sort -V | tail -1)
 echo "trained in ${TRAIN_SECONDS}s -> $RUN"
