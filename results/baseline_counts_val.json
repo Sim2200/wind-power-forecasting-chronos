@@ -1,0 +1,19 @@
+{
+ "persistence": {
+  "windows": 13266,
+  "no_valid_history": 3
+ },
+ "seasonal_naive": {
+  "windows": 13266,
+  "filled_source_on_valid_targets": {
+   "6": 539,
+   "36": 1177,
+   "64": 2183
+  },
+  "valid_targets": {
+   "6": 57879,
+   "36": 345159,
+   "64": 616900
+  }
+ }
+}
