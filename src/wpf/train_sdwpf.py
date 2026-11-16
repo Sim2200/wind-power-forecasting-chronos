@@ -1,4 +1,5 @@
-"""Train PatchTST on SDWPF with a masked loss and score the shared evaluation windows.
+"""Train PatchTST (or the DS-06 LSTM baseline, `model_type: lstm`) on SDWPF with a masked loss and score the shared
+evaluation windows.
 
 Reuses the ETTh1 recipe from `wpf.train` (Adam 1e-4, batch 128, the 'type3' schedule, early stopping with the
 best checkpoint restored) and the verified `PatchTST` model with one channel. Differences for SDWPF:
@@ -32,6 +33,7 @@ from torch.utils.data import DataLoader
 
 from wpf import score_sdwpf
 from wpf.data import sdwpf, sdwpf_windows, splits
+from wpf.models.lstm import LSTMConfig, LSTMForecaster
 from wpf.models.patchtst import PatchTST, PatchTSTConfig
 from wpf.train import EarlyStopping, lr_type3, set_seed
 
@@ -44,9 +46,10 @@ class TrainConfig:
     splits_path: str = "results/ds02_splits.json"
     fraction: float = 1.0  # training subset: 0.05, 0.25 or 1.0
     pred_len: int = 64
+    model_type: str = "patchtst"  # or "lstm" (DS-06 baseline); `model` holds that class's config overrides
     quantiles: list[float] | None = None  # e.g. [0.1, ..., 0.9]: quantile head + pinball loss; None: point head + MSE
     train_stride: int = 1  # origins every n steps inside the subset; raise it to cut epoch cost
-    model: dict = field(default_factory=dict)  # overrides for `PatchTSTConfig`
+    model: dict = field(default_factory=dict)  # overrides for `PatchTSTConfig` or `LSTMConfig`
     batch_size: int = 128
     eval_batch_size: int = 1024
     learning_rate: float = 1e-4
@@ -117,6 +120,17 @@ def predict(model: torch.nn.Module, x: np.ndarray, batch_size: int, device: str)
 
 
 
+MODELS = {"patchtst": (PatchTSTConfig, PatchTST), "lstm": (LSTMConfig, LSTMForecaster)}
+
+
+def build_model_config(cfg: TrainConfig):
+    """(model config, model class) for `cfg.model_type`, with the window shape and quantile count filled in."""
+    if cfg.model_type not in MODELS:
+        raise ValueError(f"model_type must be one of {tuple(MODELS)}, got {cfg.model_type!r}")
+    config_class, model_class = MODELS[cfg.model_type]
+    return config_class(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, n_quantiles=len(cfg.quantiles or ()), **cfg.model), model_class
+
+
 def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, save_pred: str | Path | None = None) -> dict:
     """Train with early stopping on the shared validation windows, then score val and test once with the best weights."""
     _LOG.debug("cfg=%s", cfg)
@@ -128,14 +142,14 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     quantiles = torch.tensor(cfg.quantiles, dtype=torch.float32, device=cfg.device) if cfg.quantiles else None
     if quantiles is not None:
         median_index(cfg.quantiles)
-    model_cfg = PatchTSTConfig(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, n_quantiles=len(cfg.quantiles or ()), **cfg.model)
+    model_cfg, model_class = build_model_config(cfg)
 
     def criterion(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
         """pred (..., H) or (..., H, Q) against y and mask (..., H), without the channel axis; training batches are on
         the device, the validation arrays on the CPU."""
         return masked_mse(pred, y, mask) if quantiles is None else masked_pinball(pred, y, mask, quantiles.to(pred.device))
 
-    model = PatchTST(model_cfg).to(cfg.device)
+    model = model_class(model_cfg).to(cfg.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=cfg.learning_rate)
     stopper = EarlyStopping(cfg.patience)
     history = []
@@ -180,6 +194,7 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         np.savez_compressed(save_pred, **preds)
     return {
         "config": asdict(cfg),
+        "model_type": cfg.model_type,
         "model": asdict(model_cfg),
         "parameters": model.num_parameters(),
         "train_windows": len(train_loader.dataset),

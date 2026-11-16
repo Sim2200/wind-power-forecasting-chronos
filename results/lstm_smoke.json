@@ -1,0 +1,126 @@
+{
+  "config": {
+    "clean_path": "data/sdwpf/clean.parquet",
+    "splits_path": "results/ds02_splits.json",
+    "fraction": 0.05,
+    "pred_len": 64,
+    "model_type": "lstm",
+    "quantiles": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "train_stride": 36,
+    "model": {
+      "hidden_size": 16,
+      "n_layers": 1,
+      "dropout": 0.0
+    },
+    "batch_size": 128,
+    "eval_batch_size": 1024,
+    "learning_rate": 0.0001,
+    "epochs": 2,
+    "patience": 10,
+    "seed": 2021,
+    "num_workers": 0,
+    "device": "cuda"
+  },
+  "model_type": "lstm",
+  "model": {
+    "seq_len": 288,
+    "pred_len": 64,
+    "n_vars": 1,
+    "hidden_size": 16,
+    "n_layers": 1,
+    "dropout": 0.0,
+    "revin": true,
+    "revin_affine": false,
+    "n_quantiles": 9
+  },
+  "parameters": 11008,
+  "train_windows": 3334,
+  "scaler": {
+    "mean": 262.2185974121094,
+    "std": 244.24415588378906
+  },
+  "loss": "pinball",
+  "best_val_loss": 1.1793322563171387,
+  "best_epoch": 2,
+  "epochs_run": 2,
+  "train_seconds": 6.2,
+  "val": {
+    "6": {
+      "mae": 779.6406358887962,
+      "rmse": 923.3840235662714,
+      "mase": 1.843843255156744,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 1.3516660255567867
+    },
+    "36": {
+      "mae": 778.6715282831138,
+      "rmse": 928.7886406818225,
+      "mase": 1.8411417641664536,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 1.3766083748099245
+    },
+    "64": {
+      "mae": 796.2048673836625,
+      "rmse": 946.1620516392704,
+      "mase": 1.8827908342210082,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 1.4070169768455234
+    }
+  },
+  "test": {
+    "6": {
+      "mae": 812.9177614854844,
+      "rmse": 1043.729754719318,
+      "mase": 1.9277051443611803,
+      "mase_turbines": 134,
+      "n_valid": 111463,
+      "wql": 1.3378550550589174
+    },
+    "36": {
+      "mae": 798.4409201394465,
+      "rmse": 1021.5450140706015,
+      "mase": 1.8905127843353595,
+      "mase_turbines": 134,
+      "n_valid": 692237,
+      "wql": 1.317627282118423
+    },
+    "64": {
+      "mae": 810.7174369771552,
+      "rmse": 1037.82606999932,
+      "mase": 1.918981141106571,
+      "mase_turbines": 134,
+      "n_valid": 1230308,
+      "wql": 1.3374657125733327
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.8418690608097956,
+      "val_loss": 1.1858218908309937,
+      "lr": 0.0001,
+      "seconds": 0.8
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.8369603523841271,
+      "val_loss": 1.1793322563171387,
+      "lr": 0.0001,
+      "seconds": 1.1
+    }
+  ],
+  "device": "cuda"
+}
