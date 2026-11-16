@@ -110,3 +110,18 @@ def test_short_quantile_run_reports_wql_and_saves_quantiles(tmp_path):
     rescored = score_sdwpf.score_file(data.patv, data.valid, split, pred_path)
     assert rescored["test"]["6"]["wql"] == pytest.approx(result["test"]["6"]["wql"], rel=1e-5)
     assert rescored["test"]["6"]["mae"] == pytest.approx(result["test"]["6"]["mae"], rel=1e-5)
+
+
+def test_short_lstm_run_reports_the_shared_metrics(tmp_path):
+    split = splits.make_split((6, 1, 2))
+    clean, splits_json = tmp_path / "clean.parquet", tmp_path / "splits.json"
+    _synthetic_clean(clean, split)
+    splits.save_splits(splits_json, split)
+    cfg = T.TrainConfig(clean_path=str(clean), splits_path=str(splits_json), fraction=0.5, pred_len=12, train_stride=4,
+                        model_type="lstm", quantiles=[0.1, 0.5, 0.9], epochs=2, patience=10, batch_size=64, learning_rate=1e-3,
+                        device="cpu", model={"hidden_size": 8, "n_layers": 1, "dropout": 0.0})
+    result = T.train(cfg, log=lambda s: None, save_pred=tmp_path / "run_pred.npz")
+    assert result["model_type"] == "lstm" and result["model"]["hidden_size"] == 8 and result["model"]["n_quantiles"] == 3
+    assert set(result["val"]) == {"6"} and np.isfinite(result["val"]["6"]["wql"])
+    with pytest.raises(ValueError, match="model_type"):
+        T.build_model_config(T.TrainConfig(model_type="gru"))
