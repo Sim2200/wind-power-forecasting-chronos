@@ -22,6 +22,10 @@ The Chronos training subsets are exported as GluonTS Arrow files by `python -m w
 
 `CFG=lstm_100pct_s2021 sbatch slurm/sdwpf.sbatch` trains the DS-06 LSTM (`model_type: lstm` in `configs/lstm_100pct_s{2021,2022,2023}.json`: RevIN, 2 x 128 LSTM over the 288-step window, the same quantile head, loss, early stopping and scoring as PatchTST) on the full training data for one seed; `lstm_smoke` is the two-epoch check. `python -m wpf.seed_summary results/lstm_100pct_s2021.json results/lstm_100pct_s2022.json results/lstm_100pct_s2023.json --out results/lstm_100pct_seeds.json` writes the mean and standard deviation over the seeds.
 
+## Chronos zero-shot
+
+`MODEL=amazon/chronos-t5-small NAME=chronos_small_zeroshot PERIODS="val test" sbatch slurm/chronos_eval.sbatch` scores the pretrained model on the shared windows without training: `python -m wpf.chronos_eval --model <hf id or checkpoint dir> --name <name> --out output/<name>.json [--results results/] [--periods val test] [--context keep|nan]` builds the 288-step kW contexts before the shared origins (missing readings as NaN, flagged readings as stored under `keep`), calls `predict_quantiles` for the 9 deciles, takes the median as the point forecast, writes the same `_pred.npz` layout as PatchTST and scores it with `wpf.metrics`. The model must be in the Hugging Face cache before the job, since compute nodes are offline. The same command scores a fine-tuned checkpoint directory.
+
 Head design (PT-03): `configs/sdwpf_100pct_h6.json` and `_h36.json` train one model per horizon on the full data; `python -m wpf.head_design --shared results/pt03_100pct.json --h6 results/pt03_100pct_h6.json --h36 results/pt03_100pct_h36.json` compares them with the shared 64-step head on validation WQL and writes the chosen design to `results/pt03_head_design.json`.
 
 ## Running on Zaratan
