@@ -1,0 +1,25 @@
+# CF-02 smoke: 50 LoRA steps of chronos-t5-tiny on the 5% nan export, to check the script end to end on a MIG slice.
+# python scripts/train_lora.py --config configs/chronos_lora_smoke.yaml --rank 4
+training_data_paths:
+- data/sdwpf/chronos_nan/train_5pct.arrow
+probability:
+- 1.0
+context_length: 288
+prediction_length: 64
+min_past: 288
+max_steps: 50
+save_steps: 50
+log_steps: 10
+per_device_train_batch_size: 32
+gradient_accumulation_steps: 1
+learning_rate: 0.0001
+lr_scheduler_type: linear
+warmup_ratio: 0.0
+model_id: amazon/chronos-t5-tiny
+model_type: seq2seq
+random_init: false
+tf32: true
+torch_compile: false
+dataloader_num_workers: 1
+seed: 2021
+output_dir: output/chronos/chronos_lora_smoke

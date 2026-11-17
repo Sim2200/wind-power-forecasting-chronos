@@ -32,6 +32,8 @@ Head design (PT-03): `configs/sdwpf_100pct_h6.json` and `_h36.json` train one mo
 
 `CFG=chronos_ft_5pct sbatch --gres=gpu:v100:1 slurm/chronos_ft.sbatch` fine-tunes `amazon/chronos-t5-small` on a DS-03 Arrow subset with Chronos' own `scripts/training/train.py` (`configs/chronos_ft_{5pct,5pct_nan,25pct,100pct}.yaml`: 1000 steps, lr 1e-3 annealed to 0, batch 32, context 288, prediction 64, min_past 288; `chronos_ft_smoke` is 50 steps of chronos-t5-tiny) and then scores `checkpoint-final` on the shared validation windows with `wpf.chronos_eval` (see Chronos zero-shot). The clone of chronos-forecasting is expected at `~/scratch.msml612/chronos-forecasting` (`CHRONOS_REPO` overrides). chronos-t5-small at batch 32 does not fit the 5 GB MIG slice; the V100 does a run in about 12 minutes.
 
+`CFG=chronos_lora_5pct_lr1e-4_nan RANK=8 sbatch slurm/chronos_lora.sbatch` fine-tunes the same model with LoRA instead: `scripts/train_lora.py` runs Chronos' `train.py` with the same YAML config but wraps the T5 attention projections (q, k, v, o) with `peft` adapters of rank `RANK` (alpha 2 x rank, dropout 0.05; `wpf.lora`), so only the adapters train, then merges them into the weights and saves a plain `checkpoint-final` that `wpf.chronos_eval` scores unchanged; `run-N/adapter` keeps the adapter alone and `checkpoint-final/lora.json` (recorded as `train_info`) the rank and trainable-parameter count. `configs/chronos_lora_5pct_lr{1e-4,1e-5}_nan.yaml` are the CF-01 recipe at 10x and 1x the full fine-tuning rate; `chronos_lora_smoke` is 50 steps of chronos-t5-tiny. The adapters fit the MIG slice.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).
