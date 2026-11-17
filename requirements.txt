@@ -2,4 +2,11 @@
 # torch is installed separately from the CUDA wheel index by scripts/setup_env.sh.
 numpy==1.26.4
 pandas==2.2.3
+# parquet for the cleaned SDWPF data (Chronos export needs it too). Minimum, not exact:
+# Chronos' training extras pull in `datasets`, which installs pyarrow 25 on Zaratan.
+pyarrow>=17.0.0
+# GluonTS Arrow files for Chronos training (needs Python 3.10-3.13; fails to import on 3.14)
+gluonts==0.17.0
+# Chronos' scripts/training/train.py imports it
+tensorboard
 pytest==8.3.4
