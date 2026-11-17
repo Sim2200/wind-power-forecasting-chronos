@@ -28,6 +28,10 @@ Head design (PT-03): `configs/sdwpf_100pct_h6.json` and `_h36.json` train one mo
 
 `MODEL=amazon/chronos-t5-small NAME=chronos_small_zeroshot PERIODS="val test" sbatch slurm/chronos_eval.sbatch` scores the pretrained model on the shared windows without training: `python -m wpf.chronos_eval --model <hf id or checkpoint dir> --name <name> --out output/<name>.json [--results results/] [--periods val test] [--context keep|nan]` builds the 288-step kW contexts before the shared origins (missing readings as NaN, flagged readings as stored under `keep`), calls `predict_quantiles` for the 9 deciles, takes the median as the point forecast, writes the same `_pred.npz` layout as PatchTST and scores it with `wpf.metrics`. The model must be in the Hugging Face cache before the job, since compute nodes are offline. The same command scores a fine-tuned checkpoint directory.
 
+## Chronos fine-tuning
+
+`CFG=chronos_ft_5pct sbatch --gres=gpu:v100:1 slurm/chronos_ft.sbatch` fine-tunes `amazon/chronos-t5-small` on a DS-03 Arrow subset with Chronos' own `scripts/training/train.py` (`configs/chronos_ft_{5pct,5pct_nan,25pct,100pct}.yaml`: 1000 steps, lr 1e-3 annealed to 0, batch 32, context 288, prediction 64, min_past 288; `chronos_ft_smoke` is 50 steps of chronos-t5-tiny) and then scores `checkpoint-final` on the shared validation windows with `wpf.chronos_eval` (see Chronos zero-shot). The clone of chronos-forecasting is expected at `~/scratch.msml612/chronos-forecasting` (`CHRONOS_REPO` overrides). chronos-t5-small at batch 32 does not fit the 5 GB MIG slice; the V100 does a run in about 12 minutes. `configs/chronos_ft_5pct_lr{1e-4,1e-5}_nan.yaml`, `chronos_ft_{25pct,100pct}_lr1e-5_nan.yaml` and `chronos_ft_100pct_lr1e-5_nan_5k.yaml` are the recipe checks behind the grid's Chronos recipe (lr 1e-5, 1000 steps, nan export and contexts; see #52): the paper's lr 1e-3 damages the pretrained model on this data, and 5000 steps is worse than 1000.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).
