@@ -57,3 +57,25 @@ def test_the_adapted_model_differs_from_the_base_once_b_is_nonzero(tiny_t5):
             if "lora_B" in n:
                 p.normal_(std=0.1)
         assert not torch.allclose(wrapped(input_ids=ids, labels=labels).logits, base)
+
+
+def test_merged_checkpoint_without_adapter_files_loads_as_the_merged_model(tiny_t5, tmp_path):
+    from transformers import AutoModelForSeq2SeqLM
+
+    wrapped = lora.apply_lora(tiny_t5, rank=2, dropout=0.0)
+    with torch.no_grad():
+        for n, p in wrapped.named_parameters():
+            if "lora_B" in n:
+                p.normal_(std=0.1)
+    final = tmp_path / "checkpoint-final"
+    wrapped.save_pretrained(final)  # what train.py does: adapter files only
+    plain = lora.merge(wrapped)
+    plain.save_pretrained(final)  # what train_lora.py does next
+    assert (final / "adapter_config.json").exists()
+    assert set(lora.strip_adapter_files(final)) >= {"adapter_config.json", "adapter_model.safetensors"}
+    assert lora.strip_adapter_files(final) == []
+    loaded = AutoModelForSeq2SeqLM.from_pretrained(final).eval()
+    ids = torch.randint(2, 64, (2, 8))
+    labels = torch.randint(2, 64, (2, 4))
+    with torch.no_grad():
+        assert torch.allclose(loaded(input_ids=ids, labels=labels).logits, plain.eval()(input_ids=ids, labels=labels).logits, atol=1e-5)

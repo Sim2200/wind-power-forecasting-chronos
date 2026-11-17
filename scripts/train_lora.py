@@ -2,7 +2,7 @@
 
 Runs train.py's `main` with its YAML config unchanged, but with `load_model` wrapped so the T5 it builds gets LoRA
 adapters (wpf.lora) before the Trainer sees it. After training the adapters are merged into the weights and the plain
-model is saved as run-N/checkpoint-final (the adapter alone is kept in run-N/adapter), so slurm/chronos_lora.sbatch
+model is saved as run-N/checkpoint-final with peft's adapter files removed (the adapter alone is kept in run-N/adapter), so slurm/chronos_lora.sbatch
 scores it with wpf.chronos_eval exactly like a full fine-tune. run-N/checkpoint-final/lora.json records the rank,
 alpha, dropout, targets and parameter counts for the run record (`--train-info`).
 
@@ -73,7 +73,9 @@ def main() -> None:
     model = state["model"]
     model.save_pretrained(run / "adapter")  # peft: the adapter weights alone
     plain = lora.merge(model)
-    plain.save_pretrained(final)  # overwrites train.py's adapter-only save with the merged plain model
+    plain.save_pretrained(final)  # over train.py's adapter-only save of the same directory
+    removed = lora.strip_adapter_files(final)  # else from_pretrained would load the adapter on top of the merged weights
+    _LOG.info("removed adapter files from the merged checkpoint: %s", removed)
     info = {"rank": a.rank, "alpha": 2 * a.rank if a.alpha is None else a.alpha, "dropout": a.dropout, "targets": list(targets),
             "trainable_parameters": state["expected"], "base_parameters": state["base_total"],
             "trainable_fraction": state["expected"] / state["base_total"], "config": a.config}

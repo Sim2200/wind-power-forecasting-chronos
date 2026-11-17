@@ -43,3 +43,24 @@ def expected_lora_parameters(model: nn.Module, rank: int, targets: tuple[str, ..
 def merge(model: nn.Module) -> nn.Module:
     """Fold the adapters into the base weights and return the plain base model (`peft`'s merge_and_unload)."""
     return model.merge_and_unload()
+
+
+ADAPTER_FILES = ("adapter_config.json", "adapter_model.safetensors", "adapter_model.bin", "README.md")
+
+
+def strip_adapter_files(checkpoint_dir) -> list[str]:
+    """Remove `peft`'s adapter files from a merged checkpoint directory, so `from_pretrained` cannot apply the update twice.
+
+    train.py saves the (peft) model first, which writes the adapter alone; the merged plain model is saved over it, and
+    transformers' PEFT integration would otherwise load `adapter_config.json` on top of the already-merged weights.
+    Returns the names removed.
+    """
+    from pathlib import Path
+
+    removed = []
+    for name in ADAPTER_FILES:
+        f = Path(checkpoint_dir) / name
+        if f.exists():
+            f.unlink()
+            removed.append(name)
+    return removed
