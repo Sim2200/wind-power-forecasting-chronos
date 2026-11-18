@@ -1,0 +1,8 @@
+{
+  "fraction": 0.05,
+  "quantiles": [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9],
+  "train_stride": 1,
+  "epochs": 30,
+  "patience": 5,
+  "model": {"d_model": 64, "n_heads": 8, "d_ff": 128, "n_layers": 3, "dropout": 0.2}
+}
