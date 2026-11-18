@@ -65,6 +65,31 @@ def test_forecast_layout_median_and_batching():
         chronos_eval.forecast(pipe, x, horizon=8, quantiles=(0.1, 0.9))
 
 
+class OOMAbovePipeline(FakePipeline):
+    """Raises CUDA out-of-memory for batches larger than `limit`, as chronos-t5-base does at batch 64 on a V100."""
+
+    def __init__(self, limit):
+        super().__init__()
+        self.limit = limit
+
+    def predict_quantiles(self, inputs, prediction_length, quantile_levels, num_samples=None):
+        if len(inputs) > self.limit:
+            self.calls.append(-len(inputs))
+            raise torch.OutOfMemoryError("fake")
+        return super().predict_quantiles(inputs, prediction_length, quantile_levels, num_samples)
+
+
+def test_forecast_halves_the_batch_on_out_of_memory():
+    x = np.random.default_rng(0).normal(500, 100, (10, 288)).astype(np.float32)
+    pipe = OOMAbovePipeline(limit=2)
+    q, median = chronos_eval.forecast(pipe, x, horizon=8, batch_size=8)
+    assert pipe.calls == [-8, -4, 2, 2, 2, 2, 2]  # halved until it fits, every row forecast exactly once
+    np.testing.assert_allclose(median[:, 0], x[:, -1])
+    assert q.shape == (9, 10, 8)
+    with pytest.raises(torch.OutOfMemoryError):
+        chronos_eval.forecast(OOMAbovePipeline(limit=0), x, horizon=8, batch_size=2)
+
+
 def test_evaluate_matches_the_shared_scorer_on_the_saved_arrays(data, tmp_path):
     patv, valid, split = data
     scores, preds = chronos_eval.evaluate(FakePipeline(), patv, valid, split, periods=("val", "test"))

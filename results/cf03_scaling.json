@@ -1,0 +1,37 @@
+{
+  "model": "amazon/chronos-t5-base",
+  "config": "configs/chronos_ft_base_scaling.yaml",
+  "steps": 200,
+  "effective_batch": 32,
+  "gpu": "Tesla V100-SXM2-32GB",
+  "node": "gpu-a5-1",
+  "precision": "fp32",
+  "su_per_gpu_hour": 12,
+  "notes": "train_runtime is the Trainer's timing of the 200 steps; wall_train_s adds model load and torchrun start-up; su = GPUs x 12 SU/h x wall.",
+  "gpus": {
+    "1": {
+      "job": 24123421,
+      "train_runtime_s": 150.9449,
+      "train_steps_per_second": 1.325,
+      "train_samples_per_second": 42.4,
+      "wall_train_s": 174,
+      "job_elapsed_s": 174,
+      "train_loss": 4.3975,
+      "per_device_batch": 32,
+      "su": 0.58
+    },
+    "2": {
+      "job": 24123422,
+      "train_runtime_s": 83.6479,
+      "train_steps_per_second": 2.391,
+      "train_samples_per_second": 76.511,
+      "wall_train_s": 107,
+      "job_elapsed_s": 107,
+      "train_loss": 4.3983,
+      "per_device_batch": 16,
+      "su": 0.71,
+      "speedup_train_runtime": 1.8,
+      "speedup_wall": 1.63
+    }
+  }
+}
