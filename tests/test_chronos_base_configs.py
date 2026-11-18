@@ -27,3 +27,12 @@ def test_effective_batch_splits_over_the_gpu_counts():
     for name in ("chronos_ft_base_5pct_nan", "chronos_ft_base_scaling"):
         batch = _load(name)["per_device_train_batch_size"]
         assert batch == 32 and all(batch % g == 0 for g in (1, 2, 4))
+
+
+def test_scratch_configs_are_the_recipe_without_pretrained_weights():
+    small = _load("chronos_ft_5pct_lr1e-5_nan")
+    for lr, value in (("1e-3", 0.001), ("1e-5", 0.00001)):
+        scratch = _load(f"chronos_scratch_5pct_lr{lr}_nan")
+        assert scratch["random_init"] is True and scratch["learning_rate"] == value
+        changed = {k for k in set(small) | set(scratch) if small.get(k) != scratch.get(k)}
+        assert changed <= {"random_init", "learning_rate", "output_dir"}
