@@ -44,3 +44,18 @@ def test_cli_writes_the_summary(tmp_path, monkeypatch):
     seed_summary.main()
     got = json.loads(out.read_text())
     assert got["runs"] == paths and got["test"]["64"]["mase"]["n"] == 2
+
+
+def test_chronos_records_take_the_seed_from_the_training_yaml(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    recs = []
+    for seed in (2021, 2022):
+        cfg = tmp_path / f"cfg_s{seed}.yaml"
+        cfg.write_text(f"seed: {seed}\nmax_steps: 1000\n")
+        rec = _record(seed, 0.6, 0.5)
+        del rec["config"], rec["model_type"], rec["test"]  # chronos_eval records: val only, the YAML carries the seed
+        rec["train_config"] = cfg.name
+        recs.append(rec)
+    out = seed_summary.summarize(recs)
+    assert out["seeds"] == [2021, 2022] and out["model_type"] == "chronos"
+    assert "test" not in out and out["val"]["6"]["mase"]["n"] == 2
