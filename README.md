@@ -36,6 +36,10 @@ Head design (PT-03): `configs/sdwpf_100pct_h6.json` and `_h36.json` train one mo
 
 `CFG=chronos_ft_base_5pct_nan GPUS=2 sbatch --gres=gpu:v100:2 slurm/chronos_ft_ddp.sbatch` fine-tunes `amazon/chronos-t5-base` (200M parameters) on 2 V100s with DDP (CF-03): `torchrun --nproc_per_node $GPUS` around the same `train.py`, whose Hugging Face Trainer shards the batches across the processes; the config's `per_device_train_batch_size` (32) is read as the effective batch and passed as 32 / GPUS per GPU, so the effective batch and the 1000 optimizer steps are the same on any GPU count and the config is the CF-01 grid recipe with the base model (`tests/test_chronos_base_configs.py`; V100 has no TF32 or bf16, so training is fp32 like the small-model runs). `chronos_ft_base_scaling` is the same at 200 steps for timing (`EVAL=0`, `GPUS=1|2|4`); `results/cf03_scaling.json` records wall time, steps per second and SU per GPU count. `MODEL=amazon/chronos-t5-base NAME=chronos_base_zeroshot_nan CONTEXT=nan sbatch slurm/chronos_eval.sbatch` is the base model's zero-shot reference.
 
+## The experiment grid
+
+`python -m wpf.grid submit` launches the whole grid (EX-01) as two Slurm job arrays: {PatchTST quantile, PatchTST point, LSTM, Chronos LoRA, Chronos zero-shot} on MIG slices and {Chronos full fine-tune} on the V100, each cell being {5, 25, 100%} x {seeds 2021, 2022, 2023} with the recipe its own task settled on (`wpf.grid.MODELS`). Each array task runs the model's existing sbatch script inside its allocation with `CFG`, `SEED`, `NAME=ex_<model>_<pct>pct_s<seed>` and `PERIODS="val test"`, so every run scores validation and, exactly once, the test windows, and its record `output/<name>.json` carries `train_seconds`, `inference_seconds`, `gpu` and the parameter count. `python -m wpf.grid list` is the dry run (one line per cell), `status` shows which cells have a record, and `submit --missing` re-submits only the cells without one.
+
 ## Running on Zaratan
 
 To run on UMD's Zaratan HPC cluster, see [docs/zaratan_setup.md](docs/zaratan_setup.md).

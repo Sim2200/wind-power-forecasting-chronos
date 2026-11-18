@@ -174,12 +174,16 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
             break
         for g in optimizer.param_groups:
             g["lr"] = lr_type3(cfg.learning_rate, epoch + 1)
+    train_seconds = round(time.time() - t0, 1)
     model.load_state_dict(stopper.best_state)
     if save_weights is not None:
         torch.save(stopper.best_state, save_weights)
-    scores, preds = {}, {}
+    scores, preds, inference_seconds = {}, {}, 0.0
     for period, arrays in (("val", val), ("test", sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "test", cfg.pred_len))):
-        pred_kw = data.scaler.inverse(predict(model, arrays["x"], cfg.eval_batch_size, cfg.device)).astype(np.float64)
+        t1 = time.time()
+        pred_scaled = predict(model, arrays["x"], cfg.eval_batch_size, cfg.device)
+        inference_seconds += time.time() - t1
+        pred_kw = data.scaler.inverse(pred_scaled).astype(np.float64)
         quantile_kw = None
         if quantiles is not None:
             quantile_kw = np.moveaxis(pred_kw, -1, 0)  # (Q, turbines, origins, H), the layout of metrics.wql
@@ -203,7 +207,9 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         "best_val_loss": stopper.best,
         "best_epoch": stopper.best_epoch,
         "epochs_run": len(history),
-        "train_seconds": round(time.time() - t0, 1),
+        "train_seconds": train_seconds,
+        "inference_seconds": round(inference_seconds, 1),  # forecasting the val and test windows with the best weights
+        "gpu": torch.cuda.get_device_name(cfg.device) if cfg.device.startswith("cuda") and torch.cuda.is_available() else None,
         "val": scores["val"],
         "test": scores["test"],
         "history": history,
@@ -219,11 +225,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Train PatchTST on SDWPF.")
     ap.add_argument("--config", required=True)
     ap.add_argument("--out", required=True, help="result JSON; weights and predictions are written next to it")
+    ap.add_argument("--seed", type=int, default=None, help="override the config's seed (the EX-01 grid runs one config per seed)")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    result = train(load_config(a.config), save_weights=out.with_suffix(".pt"), save_pred=out.with_name(out.stem + "_pred.npz"))
+    cfg = load_config(a.config)
+    if a.seed is not None:
+        cfg.seed = a.seed
+    result = train(cfg, save_weights=out.with_suffix(".pt"), save_pred=out.with_name(out.stem + "_pred.npz"))
     for period in ("val", "test"):  # NaN (no WQL for a point model) is not JSON; write null like metrics.save_results
         result[period] = {h: {k: (None if isinstance(v, float) and np.isnan(v) else v) for k, v in r.items()} for h, r in result[period].items()}
     out.write_text(json.dumps(result, indent=2))
