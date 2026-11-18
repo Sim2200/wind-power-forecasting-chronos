@@ -7,7 +7,10 @@ scores it with wpf.chronos_eval exactly like a full fine-tune. run-N/checkpoint-
 alpha, dropout, targets and parameter counts for the run record (`--train-info`).
 
     python scripts/train_lora.py --config configs/chronos_lora_5pct_nan.yaml --rank 8 [--alpha 16] [--dropout 0.05]
-                                 [--chronos-repo ~/scratch.msml612/chronos-forecasting]
+                                 [--output-dir output/chronos/<name>] [--chronos-repo ~/scratch.msml612/chronos-forecasting]
+
+`--output-dir` replaces the config's output_dir, so runs that share a config (the rank sweep) get separate run-N
+directories: train.py numbers run-N by listing output_dir, and two jobs starting together otherwise pick the same one.
 """
 from __future__ import annotations
 
@@ -41,6 +44,7 @@ def main() -> None:
     ap.add_argument("--alpha", type=int, default=None, help="default 2 * rank")
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--targets", default=",".join(lora.TARGETS))
+    ap.add_argument("--output-dir", default=None, help="override the config's output_dir (one directory per run name)")
     ap.add_argument("--chronos-repo", default=os.environ.get("CHRONOS_REPO", "~/scratch.msml612/chronos-forecasting"))
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -64,11 +68,13 @@ def main() -> None:
 
     train.load_model = load_model_with_lora
     config = yaml.safe_load(Path(a.config).read_text())
-    train.app(["--config", a.config], standalone_mode=False)  # typer: run train.main with the YAML, do not sys.exit
+    output_dir = a.output_dir or config["output_dir"]
+    argv = ["--config", a.config] + (["--output-dir", a.output_dir] if a.output_dir else [])
+    train.app(argv, standalone_mode=False)  # typer: run train.main with the YAML (CLI options override it), do not sys.exit
 
     if not train.is_main_process():
         return
-    run = sorted(Path(config["output_dir"]).glob("run-*"), key=lambda p: int(p.name.split("-")[1]))[-1]
+    run = sorted(Path(output_dir).glob("run-*"), key=lambda p: int(p.name.split("-")[1]))[-1]
     final = run / "checkpoint-final"
     model = state["model"]
     model.save_pretrained(run / "adapter")  # peft: the adapter weights alone
