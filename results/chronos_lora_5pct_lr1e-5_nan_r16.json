@@ -1,0 +1,57 @@
+{
+  "model": "output/chronos/chronos_lora_5pct_lr1e-5_nan/run-2/checkpoint-final",
+  "context": "nan",
+  "periods": [
+    "val"
+  ],
+  "num_samples": 20,
+  "parameters": {
+    "total": 46154240,
+    "trainable": 46154240
+  },
+  "device": "cuda",
+  "train_seconds": 196.0,
+  "train_config": "configs/chronos_lora_5pct_lr1e-5_nan.yaml",
+  "train_info": {
+    "rank": 16,
+    "alpha": 32,
+    "dropout": 0.05,
+    "targets": [
+      "q",
+      "k",
+      "v",
+      "o"
+    ],
+    "trainable_parameters": 1179648,
+    "base_parameters": 46154240,
+    "trainable_fraction": 0.025558821898053138,
+    "config": "configs/chronos_lora_5pct_lr1e-5_nan.yaml"
+  },
+  "inference_seconds": 415.4,
+  "val": {
+    "6": {
+      "mae": 110.69306507222987,
+      "rmse": 185.00466303380094,
+      "mase": 0.2642852314191513,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.2310916004129302
+    },
+    "36": {
+      "mae": 249.4149606004618,
+      "rmse": 390.1408026333638,
+      "mase": 0.5949300059916761,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.5197958401787514
+    },
+    "64": {
+      "mae": 293.7460882008752,
+      "rmse": 439.68568913004583,
+      "mase": 0.699361911555877,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.6091137829843434
+    }
+  }
+}

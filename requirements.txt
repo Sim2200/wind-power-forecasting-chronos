@@ -9,4 +9,6 @@ pyarrow>=17.0.0
 gluonts==0.17.0
 # Chronos' scripts/training/train.py imports it
 tensorboard
+# LoRA adapters for CF-02 (scripts/train_lora.py)
+peft==0.21.3
 pytest==8.3.4

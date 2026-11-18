@@ -121,6 +121,7 @@ def main() -> None:
     ap.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     ap.add_argument("--train-seconds", type=float, default=None, help="recorded as is, for fine-tuned checkpoints")
     ap.add_argument("--train-config", default=None, help="path of the train.py config, recorded as is")
+    ap.add_argument("--train-info", default=None, help="JSON written by the trainer (e.g. LoRA rank and trainable parameters), recorded as `train_info`")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
     from wpf.data import sdwpf  # lazy: pandas/pyarrow are only needed here
@@ -135,7 +136,8 @@ def main() -> None:
     np.savez_compressed(out.with_name(out.stem + "_pred.npz"), **preds)
     record = {"model": a.model, "context": a.context, "periods": a.periods, "num_samples": a.num_samples or pipeline.model.config.num_samples,
               "parameters": num_parameters(pipeline), "device": a.device, "train_seconds": a.train_seconds,
-              "train_config": a.train_config, "inference_seconds": scores.pop("inference_seconds")}
+              "train_config": a.train_config, "train_info": json.loads(Path(a.train_info).read_text()) if a.train_info else None,
+              "inference_seconds": scores.pop("inference_seconds")}
     record.update({p: _json_safe(scores[p]) for p in a.periods})
     out.write_text(json.dumps(record, indent=2) + "\n")
     for period in a.periods:
