@@ -1,0 +1,43 @@
+{
+  "model": "output/chronos/chronos_ft_base_5pct_nan_g2/run-0/checkpoint-final",
+  "context": "nan",
+  "periods": [
+    "val"
+  ],
+  "num_samples": 20,
+  "parameters": {
+    "total": 201374976,
+    "trainable": 201374976
+  },
+  "device": "cuda",
+  "train_seconds": 428.0,
+  "train_config": "configs/chronos_ft_base_5pct_nan.yaml",
+  "train_info": null,
+  "inference_seconds": 1390.9,
+  "val": {
+    "6": {
+      "mae": 109.88472344721004,
+      "rmse": 183.84112773764525,
+      "mase": 0.2626601930817283,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.22888736501273751
+    },
+    "36": {
+      "mae": 257.0873583144097,
+      "rmse": 392.82608137089545,
+      "mase": 0.6133739046549941,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.5334730314919989
+    },
+    "64": {
+      "mae": 302.03376353564033,
+      "rmse": 445.10563648111133,
+      "mase": 0.7193873941840606,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.6288746403277206
+    }
+  }
+}
