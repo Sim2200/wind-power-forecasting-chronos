@@ -83,6 +83,7 @@ def test_short_run_on_synthetic_data(tmp_path):
     rescored = score_sdwpf.score_file(data.patv, data.valid, split, pred_path)
     assert rescored["test"]["6"]["mae"] == pytest.approx(result["test"]["6"]["mae"], rel=1e-5)
     assert (tmp_path / "run.pt").exists()
+    assert result["inference_seconds"] >= 0 and result["gpu"] is None and "slurm_job_id" in result  # cpu run outside Slurm
 
 
 def test_short_quantile_run_reports_wql_and_saves_quantiles(tmp_path):
