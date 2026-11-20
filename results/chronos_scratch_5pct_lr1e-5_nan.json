@@ -1,0 +1,43 @@
+{
+  "model": "output/chronos/chronos_scratch_5pct_lr1e-5_nan/run-0/checkpoint-final",
+  "context": "nan",
+  "periods": [
+    "val"
+  ],
+  "num_samples": 20,
+  "parameters": {
+    "total": 48251392,
+    "trainable": 48251392
+  },
+  "device": "cuda",
+  "train_seconds": 221.0,
+  "train_config": "configs/chronos_scratch_5pct_lr1e-5_nan.yaml",
+  "train_info": null,
+  "inference_seconds": 414.3,
+  "val": {
+    "6": {
+      "mae": 290.21627789841506,
+      "rmse": 427.11900016251894,
+      "mase": 0.6897914720745923,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.5946785267358545
+    },
+    "36": {
+      "mae": 300.68471083976044,
+      "rmse": 434.38737476803175,
+      "mase": 0.7146849389396918,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.6229263317694005
+    },
+    "64": {
+      "mae": 303.1727861222794,
+      "rmse": 437.1832285452841,
+      "mase": 0.7203332592077286,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.6322489615443978
+    }
+  }
+}

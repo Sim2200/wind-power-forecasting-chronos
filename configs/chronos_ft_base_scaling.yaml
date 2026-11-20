@@ -1,0 +1,28 @@
+# CF-03 scaling runs: chronos-t5-base, 200 steps of the 5% recipe, timing only (EVAL=0). The one file serves 1, 2 and
+# 4 GPUs: slurm/chronos_ft_ddp.sbatch passes --per-device-train-batch-size 32 / GPUS, so the batch below is the
+# effective batch and each run sees the same number of windows per optimizer step.
+training_data_paths:
+- data/sdwpf/chronos_nan/train_5pct.arrow
+probability:
+- 1.0
+# DS-02 windows: L = 288, H = 64; min_past = context_length so every sampled window has full history
+context_length: 288
+prediction_length: 64
+min_past: 288
+# Learning-rate pilot: the paper recipe (1000 steps, batch 32, linear decay) at lr 1e-5 instead of 1e-3
+max_steps: 200
+save_steps: 200
+log_steps: 50
+per_device_train_batch_size: 32
+gradient_accumulation_steps: 1
+learning_rate: 0.00001
+lr_scheduler_type: linear
+warmup_ratio: 0.0
+model_id: amazon/chronos-t5-base
+model_type: seq2seq
+random_init: false
+tf32: false
+torch_compile: false
+dataloader_num_workers: 1
+seed: 2021
+output_dir: output/chronos/chronos_ft_base_scaling

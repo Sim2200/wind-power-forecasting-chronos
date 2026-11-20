@@ -76,10 +76,22 @@ def forecast(pipeline, x: np.ndarray, horizon: int = max(splits.HORIZONS), batch
         raise ValueError("quantiles must include 0.5, the median is the point forecast")
     flat = torch.from_numpy(np.ascontiguousarray(x, dtype=np.float32).reshape(-1, x.shape[-1]))
     out = []
-    for i in range(0, len(flat), batch_size):
-        q, _ = pipeline.predict_quantiles(flat[i : i + batch_size], prediction_length=horizon,
-                                          quantile_levels=list(quantiles), num_samples=num_samples)
+    i = 0
+    while i < len(flat):
+        try:
+            q, _ = pipeline.predict_quantiles(flat[i : i + batch_size], prediction_length=horizon,
+                                              quantile_levels=list(quantiles), num_samples=num_samples)
+        except torch.OutOfMemoryError:
+            # chronos-t5-base at 20 samples x 64 contexts fills a 32 GB V100: halve the batch and redo this slice
+            if batch_size == 1:
+                raise
+            batch_size //= 2
+            _LOG.warning("out of GPU memory, batch_size -> %d", batch_size)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            continue
         out.append(q.float().cpu())  # (B, H, Q)
+        i += batch_size
     q = torch.cat(out).numpy()
     q = np.moveaxis(q, -1, 0).reshape(len(quantiles), *x.shape[:-1], horizon)
     return q, q[quantiles.index(0.5)]
