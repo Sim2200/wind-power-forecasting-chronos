@@ -19,14 +19,13 @@ def test_grid_has_every_cell_once_with_its_config():
     assert grid.Cell("lstm", 25, 2023).name == "ex_lstm_25pct_s2023"
 
 
-def test_partitions_split_the_cells():
+def test_every_cell_runs_on_the_v100():
     mig, v100 = grid.cells("mig"), grid.cells("v100")
-    assert len(mig) + len(v100) == len(grid.cells())
-    assert {c.model for c in v100} == {"chronos_ft"} and len(v100) == 9
+    assert len(mig) == 0 and len(v100) == len(grid.cells()) == 46  # one GPU type: comparable GPU hours across models
 
 
 def test_cell_env_and_shell_lines():
-    c = grid.cells("mig")[0]
+    c = grid.cells("v100")[0]
     env = c.env()
     assert env["NAME"] == c.name and env["CFG"] == "sdwpf_5pct_lr3e-5" and env["SEED"] == "2021" and env["SCRIPT"] == "slurm/sdwpf.sbatch"
     lora_cell = grid.Cell("chronos_lora", 100, 2022)
@@ -40,15 +39,13 @@ def test_cell_env_and_shell_lines():
 
 def test_submit_commands_and_missing_only(tmp_path):
     cmds = grid.submit_commands(output=tmp_path)
-    assert len(cmds) == 2
-    assert cmds[0][1] == "--array=0-36" and "--gpus=a100_1g.5gb:1" in cmds[0] and "--export=ALL,GRID_PARTITION=mig" in cmds[0]
-    assert cmds[1][1] == "--array=0-8" and "--gres=gpu:v100:1" in cmds[1] and cmds[1][-1] == "slurm/grid.sbatch"
-    for c in grid.cells("v100"):  # every V100 cell done, two MIG cells done
-        c.record(tmp_path).write_text("{}")
-    grid.cells("mig")[0].record(tmp_path).write_text("{}")
-    grid.cells("mig")[2].record(tmp_path).write_text("{}")
+    assert len(cmds) == 1
+    assert cmds[0][1] == "--array=0-45" and "--gres=gpu:v100:1" in cmds[0] and "--export=ALL,GRID_PARTITION=v100" in cmds[0]
+    assert cmds[0][-1] == "slurm/grid.sbatch"
+    grid.cells("v100")[0].record(tmp_path).write_text("{}")  # two cells done
+    grid.cells("v100")[2].record(tmp_path).write_text("{}")
     cmds = grid.submit_commands(missing_only=True, output=tmp_path)
-    assert len(cmds) == 1 and cmds[0][1] == "--array=" + ",".join(str(i) for i in range(37) if i not in (0, 2))
+    assert len(cmds) == 1 and cmds[0][1] == "--array=" + ",".join(str(i) for i in range(46) if i not in (0, 2))
     assert grid.array_spec([4]) == "4" and grid.array_spec([3, 4, 5]) == "3-5"
     with pytest.raises(ValueError):
         grid.array_spec([])

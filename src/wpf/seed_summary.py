@@ -32,18 +32,22 @@ def record_seed(record: dict) -> int:
     return yaml.safe_load(Path(record["train_config"]).read_text())["seed"]
 
 
-def summarize(records: list[dict], periods: tuple[str, ...] | None = None) -> dict:
+def summarize(records: list[dict], periods: tuple[str, ...] | None = None, seeds: list[int] | None = None) -> dict:
     """Mean / std / n per period, horizon and metric over the records; a metric that is null in any record is null.
 
     `periods` defaults to those present in every record ("val" and "test" for train_sdwpf, usually "val" for chronos_eval).
+    `seeds` overrides what the records say (the EX-01 grid passes the seed on the command line, so a Chronos record's
+    training YAML still names the config's seed).
     """
     _LOG.debug("n_records=%d", len(records))
     if not records:
         raise ValueError("no records")
     if periods is None:
         periods = tuple(p for p in ("val", "test") if all(p in r for r in records))
+    if seeds is not None and len(seeds) != len(records):
+        raise ValueError("one seed per record")
     model_type = records[0].get("model_type", "chronos" if "train_config" in records[0] else "patchtst")
-    out = {"seeds": [record_seed(r) for r in records], "model_type": model_type}
+    out = {"seeds": list(seeds) if seeds is not None else [record_seed(r) for r in records], "model_type": model_type}
     for period in periods:
         horizons = list(records[0][period])
         if any(list(r[period]) != horizons for r in records):
