@@ -1,0 +1,6 @@
+{
+  "fraction": 0.05,
+  "train_stride": 36,
+  "epochs": 2,
+  "model": {"d_model": 16, "n_heads": 4, "d_ff": 32, "n_layers": 1, "dropout": 0.1}
+}
