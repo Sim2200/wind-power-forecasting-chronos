@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -210,6 +211,7 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
         "train_seconds": train_seconds,
         "inference_seconds": round(inference_seconds, 1),  # forecasting the val and test windows with the best weights
         "gpu": torch.cuda.get_device_name(cfg.device) if cfg.device.startswith("cuda") and torch.cuda.is_available() else None,
+        "slurm_job_id": os.environ.get("SLURM_JOB_ID"),  # sacct gives the job's elapsed time and SU (EX-02)
         "val": scores["val"],
         "test": scores["test"],
         "history": history,

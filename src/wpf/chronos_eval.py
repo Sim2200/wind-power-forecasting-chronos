@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import time
 from pathlib import Path
 
@@ -149,6 +150,7 @@ def main() -> None:
     record = {"model": a.model, "context": a.context, "periods": a.periods, "num_samples": a.num_samples or pipeline.model.config.num_samples,
               "parameters": num_parameters(pipeline), "device": a.device,
               "gpu": torch.cuda.get_device_name(a.device) if a.device.startswith("cuda") and torch.cuda.is_available() else None,
+              "slurm_job_id": os.environ.get("SLURM_JOB_ID"),
               "train_seconds": a.train_seconds,
               "train_config": a.train_config, "train_info": json.loads(Path(a.train_info).read_text()) if a.train_info else None,
               "inference_seconds": scores.pop("inference_seconds")}
