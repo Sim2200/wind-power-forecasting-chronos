@@ -7,7 +7,7 @@
   "node": "gpu-a5-1",
   "precision": "fp32",
   "su_per_gpu_hour": 12,
-  "notes": "train_runtime is the Trainer's timing of the 200 steps; wall_train_s adds model load and torchrun start-up; su = GPUs x 12 SU/h x wall.",
+  "notes": "train_runtime is the Trainer's timing of the 200 steps; wall_train_s adds model load and torchrun start-up; su = GPUs x 12 SU/h x wall. 4 GPUs ran on 2026-11-19 with 16 cores (4 per GPU), when the node was free.",
   "gpus": {
     "1": {
       "job": 24123421,
@@ -32,6 +32,19 @@
       "su": 0.71,
       "speedup_train_runtime": 1.8,
       "speedup_wall": 1.63
+    },
+    "4": {
+      "job": 24152432,
+      "train_runtime_s": 51.6307,
+      "train_steps_per_second": 3.874,
+      "train_samples_per_second": 123.957,
+      "wall_train_s": 66,
+      "job_elapsed_s": 69,
+      "train_loss": 4.3977,
+      "per_device_batch": 8,
+      "su": 0.92,
+      "speedup_train_runtime": 2.92,
+      "speedup_wall": 2.64
     }
   }
 }
