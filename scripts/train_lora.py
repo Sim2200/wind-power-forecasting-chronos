@@ -45,6 +45,7 @@ def main() -> None:
     ap.add_argument("--dropout", type=float, default=0.05)
     ap.add_argument("--targets", default=",".join(lora.TARGETS))
     ap.add_argument("--output-dir", default=None, help="override the config's output_dir (one directory per run name)")
+    ap.add_argument("--seed", type=int, default=None, help="override the config's seed")
     ap.add_argument("--chronos-repo", default=os.environ.get("CHRONOS_REPO", "~/scratch.msml612/chronos-forecasting"))
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
@@ -70,6 +71,7 @@ def main() -> None:
     config = yaml.safe_load(Path(a.config).read_text())
     output_dir = a.output_dir or config["output_dir"]
     argv = ["--config", a.config] + (["--output-dir", a.output_dir] if a.output_dir else [])
+    argv += ["--seed", str(a.seed)] if a.seed is not None else []
     train.app(argv, standalone_mode=False)  # typer: run train.main with the YAML (CLI options override it), do not sys.exit
 
     if not train.is_main_process():
