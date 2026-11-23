@@ -52,6 +52,32 @@ PatchTST stays 7 to 10% ahead of any Chronos variant. On test, where Chronos alr
   three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). CF-06 adds the
   100% row.
 
+## How solid is the reversal? Weeks, confidence intervals and a second fold
+
+`scripts/analysis/test_breakdown.py` writes `results/ex03_test_breakdown.json`: MASE per test week (7 weeks of 7 days, mean over
+the seeds) and, for the 100% rows, zero-shot and persistence, a 95% interval from 1000 bootstrap resamples of the forecast
+origins (first seed of each cell), with the paired interval of the difference to zero-shot Chronos.
+
+- **The validation lead of the from-scratch models is real at H = 64 and marginal at H = 36.** PatchTST against zero-shot on
+  validation: −0.072 at H = 64 with interval [−0.124, −0.017]; the LSTM −0.081 [−0.121, −0.038]. At H = 36 the PatchTST interval
+  includes zero ([−0.097, +0.010]) and the LSTM's does not ([−0.089, −0.010]). At H = 6 nothing separates from zero-shot.
+- **On test the from-scratch models are behind at H = 6 and 36 and level at H = 64.** PatchTST against zero-shot: +0.023
+  [+0.012, +0.035] at H = 6, +0.034 [+0.007, +0.063] at H = 36, +0.013 [−0.021, +0.046] at H = 64; the LSTM the same pattern.
+  So the test reversal is significant at the short and middle horizons and a tie at the long one.
+- **Persistence is not significantly better than Chronos on test** (−0.024 [−0.062, +0.013] at H = 64) and not worse on
+  validation (+0.032 [−0.011, +0.075]). The honest statement is that persistence and zero-shot Chronos are tied on both splits
+  at every horizon, and only full fine-tuning at 100% edges zero-shot on test (−0.019 [−0.038, −0.001] at H = 64).
+- **The weeks are not uniform.** At H = 64 PatchTST beats zero-shot Chronos in weeks 4 and 6 and loses in weeks 1, 2, 3, 5
+  and 7; at H = 36 it loses in six of the seven. Persistence wins weeks 1 and 2 at H = 36, the two most volatile weeks. The
+  reversal is not two bad weeks; it is the typical week, with the from-scratch models ahead only in the two calmest ones.
+- **Second fold** (`scripts/analysis/fold2.py`, `results/ds02_splits_fold2.json`, `configs/*_fold2.json`): the split moved back
+  by 25 days, so days 171 to 196, the grid's validation months, become a test period. PatchTST and the LSTM are retrained on the
+  first 146 days with early stopping on days 146 to 171; Chronos needs no retraining, since nothing of its was chosen on those
+  days, and its grid validation forecasts are rescored on the fold's MASE scale: zero-shot 0.264 / 0.587 / 0.690, full fine-tune
+  100% 0.261 / 0.587 / 0.698, LoRA 0.263 / 0.588 / 0.694. The PatchTST and LSTM fold-2 scores are filled in when their jobs
+  finish. If they land near Chronos instead of the 0.551 / 0.628 they reached when selected on those same days, the validation lead
+  was selection, and the whole project reads as "nothing beats zero-shot Chronos or persistence out of sample on this farm".
+
 ## Caveats the report must state
 
 1. **Validation and test disagree on the ranking** (RQ1). Both are reported; nothing was tuned on test.
