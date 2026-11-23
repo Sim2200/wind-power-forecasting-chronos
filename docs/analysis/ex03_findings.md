@@ -14,8 +14,13 @@ scores 0.263, the same as Chronos.
 On test the picture reverses. PatchTST at 100% scores 0.265 / 0.506 / 0.602 and the LSTM 0.259 / 0.501 / 0.609, while zero-shot
 Chronos scores 0.239 / 0.473 / 0.590 and persistence 0.235 / 0.458 / 0.564. The models that won validation by 7 to 10% lose the
 test by 2 to 7%, and persistence is the strongest forecaster of all on the test months. The two splits are different regimes:
-every model's test MAE is lower than its validation MAE (Chronos 98 kW against 110 kW at H = 6), so the test period is calmer, and
-in a calm period the last value is hard to beat. The from-scratch models learned something that held on the validation months and
+every model's test MAE is lower than its validation MAE (Chronos 98 kW against 110 kW at H = 6), and the data say why
+(`results/ex03_period_stats.json`, `scripts/analysis/period_stats.py`): mean power and wind speed are alike in the two periods (411
+and 449 kW, 5.2 m/s), but power changes less over a horizon in the test months. The mean absolute change over 6 steps is 128 kW
+on test against 154 kW on validation, over 36 steps 271 against 335 kW, over 64 steps 342 against 416 kW. The test period is
+smoother, and in a smooth period the last value is hard to beat. The Chronos models, which had no validation-based selection,
+also improve from validation to test (0.698 to 0.590 at H = 64), so the regime change affects every model; the from-scratch
+models' validation edge is what did not carry over. The from-scratch models learned something that held on the validation months and
 did not transfer. This is the main result of the project and the report has to carry both splits: the validation
 ranking is what a practitioner would have chosen from, the test ranking is what they would have got.
 
