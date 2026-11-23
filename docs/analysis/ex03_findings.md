@@ -33,8 +33,9 @@ horizon, and LoRA r8 (0.59M trainable parameters) is indistinguishable from zero
 (0.623 / 0.733 on validation, 0.531 / 0.674 on test), while LoRA at 5% is not. Seven turbines for 1000 full-parameter steps look
 like long-horizon overfitting; CF-06 (#63) checks it with 200 and 500 steps.
 
-So the gap between PatchTST and Chronos on validation is not closed by adapting Chronos: at the long horizons on validation
-PatchTST stays 7 to 10% ahead of any Chronos variant. On test, where Chronos already leads, fine-tuning adds 2 to 4%.
+The question asked about the gap in either direction, and the answer has both. In the direction where PatchTST leads (validation,
+H = 36 and 64), adapting Chronos closes none of it: PatchTST stays 7 to 10% ahead of every Chronos variant. In the direction where
+Chronos leads (test, every horizon), fine-tuning widens the lead by 2 to 4%, LoRA by nothing. Both sentences belong in the report.
 
 ## RQ3: data efficiency and cost
 
@@ -43,11 +44,16 @@ PatchTST stays 7 to 10% ahead of any Chronos variant. On test, where Chronos alr
   pretrained model needs no training data to reach a level the from-scratch models need the full farm for.
 - **25%.** PatchTST and LSTM catch Chronos at H = 36 on validation (0.620 / 0.604 against 0.593) and are still behind at H = 64.
 - **100%.** PatchTST and LSTM pass Chronos at H = 36 and 64 on validation, and lose to it on test (RQ1).
-- **Cost.** A PatchTST run is 0.24 to 0.91 SU (4 to 5 minutes of training on one V100) and an LSTM run 0.25 to 1.11 SU; a Chronos
-  run is 4.8 SU, of which 1230 s is inference over the validation and test windows and about 200 s training. Zero-shot is 4.15 SU of
-  pure inference. Per unit of accuracy on validation, the 3M-parameter PatchTST is the cheapest model at the long horizons and
+- **Cost, in GPU hours as RQ3 asked.** Training alone: a PatchTST run at 100% is 0.85 SU (254 s on one V100), an LSTM run 1.0 SU, a
+  Chronos-small full fine-tune 0.7 SU (208 s) and a LoRA fine-tune 0.65 SU; zero-shot trains nothing. Whole job, training plus
+  scoring the validation and test windows: 0.24 to 1.11 SU for the from-scratch models and 4.8 SU for every Chronos variant, because
+  Chronos spends 1230 s sampling 20 forecasts per window; zero-shot is 4.15 SU of pure inference. So fine-tuning Chronos costs
+  about what training PatchTST costs; using Chronos at all costs five times more, and that is the number a deployment pays. Per unit of accuracy on validation, the 3M-parameter PatchTST is the cheapest model at the long horizons and
   the 46M-parameter Chronos the cheapest at H = 6 (no training). LoRA trains 0.59M parameters instead of 46M for the same
   accuracy as zero-shot; its cost is the same as full fine-tuning because inference dominates.
+- **One model per horizon** (the paper's practice, PT-03): with the lr 1e-4 recipe, separate H = 6 and H = 36 models score 0.273 and
+  0.569 on validation against 0.275 and 0.568 for the shared H = 64 head trained the same way (0.226 / 0.463 against 0.228 / 0.465
+  on test). The shared head loses nothing at the short horizons, which is why the grid uses one model.
 - **Chronos-T5-base** (201M) is 0.263 / 0.590 / 0.696 zero-shot on validation, 0.004 better than small at the long horizons for
   three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). CF-06 adds the
   100% row.

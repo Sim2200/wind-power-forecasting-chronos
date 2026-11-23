@@ -27,7 +27,11 @@ METRICS = ("mase", "wql", "mae")
 LABELS = {"patchtst": "PatchTST (quantile)", "patchtst_point": "PatchTST (point)", "lstm": "LSTM",
           "chronos_ft": "Chronos-small, full fine-tune", "chronos_lora": "Chronos-small, LoRA r8",
           "chronos_zeroshot": "Chronos-small, zero-shot", "chronos_base_ft": "Chronos-base, full fine-tune (2 GPUs)",
-          "chronos_base_zeroshot": "Chronos-base, zero-shot", "persistence": "Persistence", "seasonal_naive": "Seasonal naive (1 day)"}
+          "chronos_base_zeroshot": "Chronos-base, zero-shot", "persistence": "Persistence", "seasonal_naive": "Seasonal naive (1 day)",
+          "patchtst_per_horizon": "PatchTST (quantile), one model per horizon (PT-03, lr 1e-4, seed 2021)",
+          "patchtst_shared_lr1e-4": "PatchTST (quantile), shared head, same recipe (PT-03, lr 1e-4, seed 2021)"}
+PER_HORIZON_RUNS = {"6": "pt03_100pct_h6", "36": "pt03_100pct_h36"}  # the paper's practice, one model per horizon; H = 64 is the shared head
+SHARED_LR1E4_RUN = "pt03_100pct"  # the shared head trained with the same lr 1e-4 recipe, the per-horizon rows' pair
 BASE_RUNS = {  # CF-03 and CF-06 records outside the grid: (model key, fraction, record name); test exists only where PERIODS had it
     ("chronos_base_zeroshot", None): "chronos_base_zeroshot_nan",
     ("chronos_base_ft", 5): "chronos_ft_base_5pct_nan_g2",
@@ -51,6 +55,11 @@ def _period_from_scores(scores: dict) -> dict:
     return {h: {m: _stat(scores[h].get(m)) for m in METRICS if scores[h].get(m) is not None} for h in HORIZONS if h in scores}
 
 
+def _train_su(train_seconds: float | None, billing: int | None) -> float | None:
+    """SU spent on training alone: seconds x the allocation's billing weight (12 per V100) / 3600."""
+    return None if train_seconds is None or billing is None else round(train_seconds * billing / 3600, 2)
+
+
 def _mean(values: list) -> float | None:
     values = [v for v in values if v is not None]
     return round(sum(values) / len(values), 2) if values else None
@@ -72,6 +81,7 @@ def rows(results: str | Path = "results", jobs: dict[str, str] | None = None) ->
             row = {"model": model, "label": LABELS[model], "pct": pct, "n_runs": len(cells),
                    "su": _mean([c["su"] for c in cells]), "trainable_parameters": cells[0]["trainable_parameters"],
                    "train_seconds": _mean([c["train_seconds"] for c in cells]),
+                   "train_su": _mean([_train_su(c["train_seconds"], c["billing"]) for c in cells]),
                    "inference_seconds": _mean([c["inference_seconds"] for c in cells]), "gpus": 1}
             if spec.seeded:
                 summary = json.loads((results / f"ex_{model}_{pct}pct_seeds.json").read_text())
@@ -85,7 +95,7 @@ def rows(results: str | Path = "results", jobs: dict[str, str] | None = None) ->
             _LOG.info("base run %s not there yet", name)
             continue
         rec = json.loads(record.read_text())
-        row = {"model": model, "label": LABELS[model], "pct": pct, "n_runs": 1, "su": None,
+        row = {"model": model, "label": LABELS[model], "pct": pct, "n_runs": 1, "su": None, "train_su": None,
                "trainable_parameters": rec["parameters"]["trainable"], "train_seconds": rec.get("train_seconds"),
                "inference_seconds": rec.get("inference_seconds"), "gpus": 2 if rec.get("train_seconds") else 1}
         for period in ("val", "test"):
@@ -95,13 +105,36 @@ def rows(results: str | Path = "results", jobs: dict[str, str] | None = None) ->
         if job:
             acct = grid.sacct(job)
             if acct:
-                row["su"] = acct["su"]
+                row["su"], row["train_su"] = acct["su"], _train_su(rec.get("train_seconds"), acct["billing"])
         out.append(row)
+    out += per_horizon_rows(results)
     for b in table["baselines"]:
-        out.append({"model": b["model"], "label": LABELS[b["model"]], "pct": None, "n_runs": 1, "su": 0.0, "trainable_parameters": 0,
+        out.append({"model": b["model"], "label": LABELS[b["model"]], "pct": None, "n_runs": 1, "su": 0.0, "train_su": 0.0, "trainable_parameters": 0,
                     "train_seconds": None, "inference_seconds": None, "gpus": 0,
                     "val": _period_from_scores(b["val"]), "test": _period_from_scores(b["test"])})
     return out
+
+
+def per_horizon_rows(results: Path) -> list[dict]:
+    """The PT-03 one-model-per-horizon runs (H = 6 and 36) and their shared-head pair at the same lr, as single-run rows
+    without cost (they ran before the cost fields existed). The per-horizon row's H = 64 is empty: that model is the shared head."""
+    rows_ = []
+    files = {h: results / f"{name}.json" for h, name in PER_HORIZON_RUNS.items()}
+    shared = results / f"{SHARED_LR1E4_RUN}.json"
+    if not all(f.exists() for f in files.values()) or not shared.exists():
+        _LOG.info("per-horizon runs not found under %s", results)
+        return rows_
+    blank = {"n_runs": 1, "su": None, "train_su": None, "train_seconds": None, "inference_seconds": None, "gpus": 1}
+    row = {"model": "patchtst_per_horizon", "label": LABELS["patchtst_per_horizon"], "pct": 100, "trainable_parameters": None, **blank, "val": {}, "test": {}}
+    for h, f in files.items():
+        rec = json.loads(f.read_text())
+        for period in ("val", "test"):
+            row[period][h] = _period_from_scores({h: rec[period][h]})[h]
+    rows_.append(row)
+    rec = json.loads(shared.read_text())
+    rows_.append({"model": "patchtst_shared_lr1e-4", "label": LABELS["patchtst_shared_lr1e-4"], "pct": 100, "trainable_parameters": rec["parameters"],
+                  **blank, "val": _period_from_scores(rec["val"]), "test": _period_from_scores(rec["test"])})
+    return rows_
 
 
 def fmt(stat: dict | None, digits: int = 3) -> str:
@@ -122,7 +155,7 @@ def metric_table(rows_: list[dict], period: str, metric: str) -> str:
     digits = 0 if metric == "mae" else 3
     lines = [f"| model | train data | H = 6 | H = 36 | H = 64 |", "|---|---|---|---|---|"]
     for r in rows_:
-        if period not in r:
+        if period not in r or not r[period]:
             continue
         cells = [fmt(r[period].get(h, {}).get(metric), digits) for h in HORIZONS]
         lines.append(f"| {r['label']} | {_pct(r)} | " + " | ".join(cells) + " |")
@@ -131,16 +164,17 @@ def metric_table(rows_: list[dict], period: str, metric: str) -> str:
 
 def cost_table(rows_: list[dict]) -> str:
     """Markdown: SU per run, trainable parameters, train and inference seconds, next to validation and test MASE at H = 64."""
-    lines = ["| model | train data | runs | SU per run | GPUs | trainable params | train s | inference s | val MASE H=64 | test MASE H=64 |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+    lines = ["| model | train data | runs | SU per run | training SU | GPUs | trainable params | train s | inference s | val MASE H=64 | test MASE H=64 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows_:
         su = "–" if r["su"] is None else f"{r['su']:.2f}"
-        params = f"{r['trainable_parameters'] / 1e6:.2f}M" if r["trainable_parameters"] else "0"
+        train_su = "–" if r.get("train_su") is None else f"{r['train_su']:.2f}"
+        params = "–" if r["trainable_parameters"] is None else f"{r['trainable_parameters'] / 1e6:.2f}M" if r["trainable_parameters"] else "0"
         train = "–" if r["train_seconds"] is None else f"{r['train_seconds']:.0f}"
         infer = "–" if r["inference_seconds"] is None else f"{r['inference_seconds']:.0f}"
         val = fmt(r.get("val", {}).get("64", {}).get("mase"))
         test = fmt(r.get("test", {}).get("64", {}).get("mase"))
-        lines.append(f"| {r['label']} | {_pct(r)} | {r['n_runs']} | {su} | {r['gpus']} | {params} | {train} | {infer} | {val} | {test} |")
+        lines.append(f"| {r['label']} | {_pct(r)} | {r['n_runs']} | {su} | {train_su} | {r['gpus']} | {params} | {train} | {infer} | {val} | {test} |")
     return "\n".join(lines)
 
 
@@ -153,7 +187,8 @@ def report(rows_: list[dict], su_total: float) -> str:
     for period, title in (("val", "Validation"), ("test", "Test")):
         for metric, name in (("mase", "MASE"), ("wql", "WQL"), ("mae", "MAE (kW)")):
             parts += [f"## {title}: {name}", "", metric_table(rows_, period, metric), ""]
-    parts += ["## Cost", "", cost_table(rows_), ""]
+    parts += ["## Cost", "", "SU per run is the whole job (training plus scoring the validation and test windows); training SU is the "
+              "training time alone at the allocation's billing weight (12 SU per V100-hour), the GPU-hours figure of RQ3.", "", cost_table(rows_), ""]
     return "\n".join(parts)
 
 

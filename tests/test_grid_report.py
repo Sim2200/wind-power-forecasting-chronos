@@ -34,7 +34,7 @@ def test_fmt_and_tables():
     assert "| LSTM | 25% | 0.500 ± 0.010 | 0.500 ± 0.010 | 0.500 ± 0.010 |" in table
     assert grid_report.metric_table(rows, "val", "wql").count("–") == 3
     cost = grid_report.cost_table(rows)
-    assert "| LSTM | 25% | 3 | 0.76 | 1 | 1.00M | 100 | 1 | 0.500 ± 0.010 | 0.400 ± 0.010 |" in cost
+    assert "| LSTM | 25% | 3 | 0.76 | – | 1 | 1.00M | 100 | 1 | 0.500 ± 0.010 | 0.400 ± 0.010 |" in cost
 
 
 def test_report_has_every_section(tmp_path):
@@ -43,3 +43,6 @@ def test_report_has_every_section(tmp_path):
     for section in ("## Validation: MASE", "## Validation: WQL", "## Test: MASE", "## Test: MAE (kW)", "## Cost"):
         assert section in text
     assert "107.8 SU for 46 runs" in text
+    per_horizon = next(r for r in rows if r["model"] == "patchtst_per_horizon")
+    assert set(per_horizon["val"]) == {"6", "36"} and per_horizon["train_su"] is None
+    assert next(r for r in rows if r["model"] == "patchtst" and r["pct"] == 100)["train_su"] > 0

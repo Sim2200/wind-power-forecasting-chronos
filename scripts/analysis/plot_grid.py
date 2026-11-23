@@ -72,9 +72,10 @@ def data_efficiency(rows: list[dict], period: str, out: Path) -> None:
 
 
 def accuracy_vs_cost(rows: list[dict], out: Path, horizon: str = "64") -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+    fig, axes = plt.subplots(1, 3, figsize=(14, 4))
     grid_rows = [r for r in rows if r["model"] in COLORS and "test" in r]
-    for ax, key, xlabel in zip(axes, ("su", "trainable_parameters"), ("SU per run (V100, 12 SU per GPU-hour)", "trainable parameters")):
+    panels = (("train_su", "training SU (V100, 12 SU per GPU-hour)"), ("su", "SU per run, training plus scoring"), ("trainable_parameters", "trainable parameters"))
+    for ax, (key, xlabel) in zip(axes, panels):
         for model, color in COLORS.items():
             pts = [r for r in grid_rows if r["model"] == model and r[key]]
             ax.plot([r[key] for r in pts], [r["test"][horizon]["mase"]["mean"] for r in pts], color=color, marker=MARKERS[model],
@@ -85,7 +86,7 @@ def accuracy_vs_cost(rows: list[dict], out: Path, horizon: str = "64") -> None:
                 ax.annotate(f"{r['pct']}%", (r[key], r["test"][horizon]["mase"]["mean"]), textcoords="offset points", xytext=(5, 3),
                             fontsize=7.5, color=MUTED)
         zero = next((r for r in rows if r["model"] == "chronos_zeroshot"), None)
-        if zero and zero[key]:
+        if zero and zero.get(key):
             ax.plot([zero[key]], [zero["test"][horizon]["mase"]["mean"]], marker="*", markersize=11, color=REFERENCES["chronos_zeroshot"][0],
                     linestyle="none", label=grid_report.LABELS["chronos_zeroshot"])
         pers = next((r for r in rows if r["model"] == "persistence"), None)
@@ -93,7 +94,7 @@ def accuracy_vs_cost(rows: list[dict], out: Path, horizon: str = "64") -> None:
             ax.axhline(pers["test"][horizon]["mase"]["mean"], color=REFERENCES["persistence"][0], linestyle=":", linewidth=1.5,
                        label=grid_report.LABELS["persistence"])
         ax.set_xscale("log")
-        if key == "su":
+        if key in ("su", "train_su"):
             ax.set_xticks([0.25, 0.5, 1, 2, 5])
             ax.set_xticklabels(["0.25", "0.5", "1", "2", "5"])
             ax.minorticks_off()
@@ -102,7 +103,7 @@ def accuracy_vs_cost(rows: list[dict], out: Path, horizon: str = "64") -> None:
     axes[0].set_ylabel(f"test MASE at H = {horizon}", color=MUTED, fontsize=9)
     handles, labels = axes[0].get_legend_handles_labels()
     fig.legend(handles, labels, loc="lower center", ncol=4, frameon=False, fontsize=8.5, bbox_to_anchor=(0.5, -0.06))
-    fig.suptitle(f"Accuracy against cost at H = {horizon}: labels give the training fraction (Chronos: 5% labelled, 25% and 100% overlap it)", x=0.01, ha="left", fontsize=11, color=INK)
+    fig.suptitle(f"Accuracy against cost at H = {horizon}: labels give the training fraction (Chronos: 5% labelled, 25% and 100% overlap it); zero-shot has no training cost", x=0.01, ha="left", fontsize=11, color=INK)
     fig.tight_layout(rect=(0, 0.1, 1, 0.95))
     fig.savefig(out, dpi=160, bbox_inches="tight")
     plt.close(fig)
