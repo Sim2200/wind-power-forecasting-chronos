@@ -7,7 +7,7 @@
 # --gres on the command line must match GPUS. The config's per_device_train_batch_size is read as the effective batch
 # (32) and passed to train.py as 32 / GPUS per GPU, so the effective batch and max_steps (optimizer steps) are the same
 # on any GPU count. NAME (default <CFG>_g<GPUS>) names output/chronos/<NAME> (training), output/<NAME>.json (record) and
-# results/<NAME>_val.json. EVAL=0 skips the scoring (timing runs). Compute nodes are offline: the model must be in the
+# results/<NAME>_<period>.json. PERIODS (default val) adds the test pass: PERIODS="val test". EVAL=0 skips the scoring (timing runs). Compute nodes are offline: the model must be in the
 # HF cache (load it once on a login node).
 #SBATCH --job-name=chronos_ddp
 #SBATCH --account=msml612-class
@@ -27,6 +27,7 @@ CFG="${CFG:-chronos_ft_base_scaling}"
 GPUS="${GPUS:-2}"
 NAME="${NAME:-${CFG}_g${GPUS}}"
 EVAL="${EVAL:-1}"
+PERIODS="${PERIODS:-val}"  # PERIODS="val test" adds the one test pass
 CHRONOS_REPO="${CHRONOS_REPO:-$HOME/scratch.msml612/chronos-forecasting}"
 case "$CFG" in *_nan|*_scaling) CONTEXT=nan ;; *) CONTEXT=keep ;; esac
 echo "$NAME ($CFG on $GPUS GPUs) on $(hostname), GPUs: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader | tr '\n' ';'), context $CONTEXT"
@@ -45,4 +46,4 @@ echo "trained in ${TRAIN_SECONDS}s on $GPUS GPUs -> $RUN"
 [ "$EVAL" = "1" ] || exit 0
 
 python -m wpf.chronos_eval --model "$RUN/checkpoint-final" --name "$NAME" --context "$CONTEXT" \
-    --out "output/${NAME}.json" --results results/ --train-seconds "$TRAIN_SECONDS" --train-config "configs/${CFG}.yaml"
+    --periods $PERIODS --out "output/${NAME}.json" --results results/ --train-seconds "$TRAIN_SECONDS" --train-config "configs/${CFG}.yaml"
