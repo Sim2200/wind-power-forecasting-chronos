@@ -1,7 +1,7 @@
 #!/bin/bash
 # EX-01: one array task = one cell of the experiment grid (wpf.grid). Submit with
-#   python -m wpf.grid submit            (two arrays: the MIG cells and the V100 cells; --dry-run prints them)
-# GRID_PARTITION (mig | v100) and the array index pick the cell; its env (CFG, SEED, NAME, PERIODS, ...) is evaluated
+#   python -m wpf.grid submit            (one array of all cells on the V100; --dry-run prints it)
+# GRID_PARTITION (v100, or mig for a cheap smoke) and the array index pick the cell; its env (CFG, SEED, NAME, PERIODS, ...) is evaluated
 # and the model's own sbatch script is run inside this allocation, so every model keeps its single-run entry point.
 # The GPU is given on the submit command line (wpf.grid.PARTITIONS); the header's MIG slice is the fallback.
 #SBATCH --job-name=grid
