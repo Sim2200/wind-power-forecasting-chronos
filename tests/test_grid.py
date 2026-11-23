@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import json
+
 import pytest
 
 from wpf import grid
@@ -60,3 +62,14 @@ def test_slurm_job_id_names_the_array_task(monkeypatch):
     monkeypatch.setenv("SLURM_ARRAY_JOB_ID", "24152616")
     monkeypatch.setenv("SLURM_ARRAY_TASK_ID", "45")
     assert grid.slurm_job_id() == "24152616_45"
+
+
+def test_baseline_rows_need_val_and_test(tmp_path):
+    scores = {"6": {"mase": 0.26, "wql": None, "mae": 110.0}, "36": {"mase": 0.6, "wql": None, "mae": 250.0}, "64": {"mase": 0.72, "wql": None, "mae": 300.0}}
+    for period in ("val", "test"):
+        (tmp_path / f"baseline_persistence_{period}.json").write_text(json.dumps(scores))
+    (tmp_path / "baseline_seasonal_naive_val.json").write_text(json.dumps(scores))  # no test file: left out
+    rows = grid.baseline_rows(tmp_path)
+    assert [r["name"] for r in rows] == ["baseline_persistence"]
+    assert rows[0]["model"] == "persistence" and rows[0]["su"] is None and rows[0]["trainable_parameters"] == 0
+    assert rows[0]["test"]["64"] == {"mase": 0.72, "wql": None, "mae": 300.0}

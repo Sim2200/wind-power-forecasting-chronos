@@ -190,6 +190,27 @@ def cell_row(cell: Cell, record: dict, accounting: dict | None) -> dict:
     return row
 
 
+BASELINES = ("persistence", "seasonal_naive")  # DS-05 records, results/baseline_<name>_{val,test}.json
+
+
+def baseline_rows(results: Path) -> list[dict]:
+    """The DS-05 naive baselines in the shape of a cell row (no training, no seed, no GPU cost), so EX-03 reads one table."""
+    rows = []
+    for name in BASELINES:
+        files = {period: results / f"baseline_{name}_{period}.json" for period in ("val", "test")}
+        if not all(f.exists() for f in files.values()):
+            _LOG.warning("baseline %s has no val and test record under %s", name, results)
+            continue
+        row = {"name": f"baseline_{name}", "model": name, "pct": None, "seed": None, "slurm_job_id": None, "gpu": None,
+               "train_seconds": None, "inference_seconds": None, "trainable_parameters": 0,
+               "elapsed_s": None, "billing": None, "su": None, "state": None}
+        for period, f in files.items():
+            scores = json.loads(f.read_text())
+            row[period] = {h: {k: scores[h].get(k) for k in ("mase", "wql", "mae")} for h in HORIZONS if h in scores}
+        rows.append(row)
+    return rows
+
+
 def collect(output: str | Path = "output", results: str | Path = "results", use_sacct: bool = True,
             accounting: dict[str, dict] | None = None) -> dict:
     """Copy every cell's record into `results`, write the seed summaries and the cell table; returns the table."""
@@ -221,7 +242,7 @@ def collect(output: str | Path = "output", results: str | Path = "results", use_
             summary = {"runs": [str(c.record(results)) for c in group],
                        **seed_summary.summarize([records[c] for c in group], seeds=[c.seed for c in group])}
             (results / f"ex_{model}_{pct}pct_seeds.json").write_text(json.dumps(summary, indent=2) + "\n")
-    table = {"cells": rows, "n_cells": len(rows), "n_expected": len(cells()),
+    table = {"cells": rows, "baselines": baseline_rows(results), "n_cells": len(rows), "n_expected": len(cells()),
              "su_total": round(sum(r["su"] for r in rows if r["su"] is not None), 1),
              "su_missing_accounting": [r["name"] for r in rows if r["su"] is None]}
     (results / "ex_grid.json").write_text(json.dumps(table, indent=2) + "\n")

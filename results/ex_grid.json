@@ -2255,6 +2255,106 @@
       }
     }
   ],
+  "baselines": [
+    {
+      "name": "baseline_persistence",
+      "model": "persistence",
+      "pct": null,
+      "seed": null,
+      "slurm_job_id": null,
+      "gpu": null,
+      "train_seconds": null,
+      "inference_seconds": null,
+      "trainable_parameters": 0,
+      "elapsed_s": null,
+      "billing": null,
+      "su": null,
+      "state": null,
+      "val": {
+        "6": {
+          "mase": 0.2633483582890579,
+          "wql": null,
+          "mae": 110.27323134239076
+        },
+        "36": {
+          "mase": 0.6049899362142857,
+          "wql": null,
+          "mae": 253.54991524605916
+        },
+        "64": {
+          "mase": 0.723926983128217,
+          "wql": null,
+          "mae": 304.02168115588984
+        }
+      },
+      "test": {
+        "6": {
+          "mase": 0.23518119529954148,
+          "wql": null,
+          "mae": 97.79918790575455
+        },
+        "36": {
+          "mase": 0.45780025483326126,
+          "wql": null,
+          "mae": 191.77965751209757
+        },
+        "64": {
+          "mase": 0.5637033085428644,
+          "wql": null,
+          "mae": 236.30453380502166
+        }
+      }
+    },
+    {
+      "name": "baseline_seasonal_naive",
+      "model": "seasonal_naive",
+      "pct": null,
+      "seed": null,
+      "slurm_job_id": null,
+      "gpu": null,
+      "train_seconds": null,
+      "inference_seconds": null,
+      "trainable_parameters": 0,
+      "elapsed_s": null,
+      "billing": null,
+      "su": null,
+      "state": null,
+      "val": {
+        "6": {
+          "mase": 0.923907544075179,
+          "wql": null,
+          "mae": 388.0131318127248
+        },
+        "36": {
+          "mase": 0.959574869542241,
+          "wql": null,
+          "mae": 402.6892142171081
+        },
+        "64": {
+          "mase": 0.9526091891366039,
+          "wql": null,
+          "mae": 399.9685675796313
+        }
+      },
+      "test": {
+        "6": {
+          "mase": 1.0832568355186376,
+          "wql": null,
+          "mae": 453.06449625115005
+        },
+        "36": {
+          "mase": 1.080176094361954,
+          "wql": null,
+          "mae": 453.4691565260442
+        },
+        "64": {
+          "mase": 1.0760007780950898,
+          "wql": null,
+          "mae": 451.7449297679837
+        }
+      }
+    }
+  ],
   "n_cells": 46,
   "n_expected": 46,
   "su_total": 107.8,
