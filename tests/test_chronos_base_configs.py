@@ -52,3 +52,14 @@ def test_base_100pct_config_only_changes_the_data():
     assert base100["training_data_paths"] == ["data/sdwpf/chronos_nan/train_100pct.arrow"]
     changed = {k for k in set(base5) | set(base100) if base5.get(k) != base100.get(k)}
     assert changed == {"training_data_paths", "output_dir"}
+
+
+def test_sbatch_scores_nan_configs_and_their_step_variants_with_nan_context():
+    """`chronos_ft_5pct_lr1e-5_nan_200` must score with --context nan like the grid cell it is compared with."""
+    import re
+    import subprocess
+    text = (CONFIGS.parent / "slurm" / "chronos_ft.sbatch").read_text()
+    case = re.search(r'case "\$CFG" in (.*?) esac', text).group(0)
+    for cfg, expected in (("chronos_ft_5pct_lr1e-5_nan", "nan"), ("chronos_ft_5pct_lr1e-5_nan_200", "nan"), ("chronos_ft_5pct", "keep")):
+        out = subprocess.run(["bash", "-c", f'CFG={cfg}; {case}; echo $CONTEXT'], capture_output=True, text=True, check=True)
+        assert out.stdout.strip() == expected, (cfg, out.stdout)
