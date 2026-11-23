@@ -75,8 +75,10 @@ def load_data(cfg: TrainConfig) -> Data:
     frame = sdwpf.load_clean(cfg.clean_path)
     split = splits.load_splits(cfg.splits_path)
     patv, valid = sdwpf.to_dense(frame, "Patv"), sdwpf.to_dense(frame, "valid").astype(bool)
-    if patv.shape[1] != split.n_steps:
+    if patv.shape[1] < split.n_steps:
         raise ValueError(f"{cfg.clean_path} has {patv.shape[1]} steps per turbine, the split expects {split.n_steps}")
+    # A fold that ends before the record does (DS-02 fold 2) sees only its own steps; the rest is never loaded.
+    patv, valid = patv[:, : split.n_steps], valid[:, : split.n_steps]
     scaler = sdwpf_windows.fit_scaler(patv, valid, splits.subset_range(split, cfg.fraction))
     series = scaler.transform(sdwpf_windows.fill_missing(patv)).astype(np.float32)
     return Data(series=series, patv=patv.astype(np.float64), valid=valid, scaler=scaler, split=split)

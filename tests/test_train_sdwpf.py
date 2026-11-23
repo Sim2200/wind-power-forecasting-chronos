@@ -126,3 +126,17 @@ def test_short_lstm_run_reports_the_shared_metrics(tmp_path):
     assert set(result["val"]) == {"6"} and np.isfinite(result["val"]["6"]["wql"])
     with pytest.raises(ValueError, match="model_type"):
         T.build_model_config(T.TrainConfig(model_type="gru"))
+
+
+def test_load_data_keeps_only_the_splits_steps_when_the_record_is_longer(tmp_path):
+    """DS-02 fold 2 stops 49 days before the record ends; those steps must never be loaded."""
+    full, fold = splits.make_split((6, 1, 2)), splits.make_split((5, 1, 1))
+    clean, splits_json = tmp_path / "clean.parquet", tmp_path / "splits.json"
+    _synthetic_clean(clean, full)
+    splits.save_splits(splits_json, fold)
+    data = T.load_data(T.TrainConfig(clean_path=str(clean), splits_path=str(splits_json), device="cpu"))
+    assert data.patv.shape[1] == data.valid.shape[1] == data.series.shape[1] == fold.n_steps < full.n_steps
+    short = splits.make_split((6, 1, 3))
+    splits.save_splits(splits_json, short)
+    with pytest.raises(ValueError, match="steps per turbine"):
+        T.load_data(T.TrainConfig(clean_path=str(clean), splits_path=str(splits_json), device="cpu"))
