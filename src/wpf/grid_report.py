@@ -5,7 +5,10 @@ the Chronos-T5-base runs of CF-03 and CF-06 (validation and, where it was scored
 (model, fraction): mean and std over seeds of MASE, WQL and MAE at H = 6 / 36 / 64 on validation and test, plus the mean
 SU, trainable parameters, train and inference seconds of the cells.
 
-    python -m wpf.grid_report [--results results] [--out docs/analysis/ex03_tables.md]
+    python -m wpf.grid_report [--results results] [--out docs/analysis/ex03_tables.md] [--job NAME=JOBID ...]
+
+The SU of a base run comes from sacct on the record's slurm_job_id; the CF-03 records predate that field, so their job ids are
+given with --job (BASE_JOBS holds them). Run it on Zaratan for the SU column; elsewhere the column reads "–" for those runs.
 """
 from __future__ import annotations
 
@@ -32,6 +35,9 @@ BASE_RUNS = {  # CF-03 and CF-06 records outside the grid: (model key, fraction,
 }
 
 
+BASE_JOBS = {"chronos_base_zeroshot_nan": "24123439", "chronos_ft_base_5pct_nan_g2": "24123428"}  # CF-03 jobs (no id in the record)
+
+
 def _stat(mean: float | None, std: float | None = None, n: int = 1) -> dict:
     return {"mean": mean, "std": std, "n": n}
 
@@ -50,9 +56,10 @@ def _mean(values: list) -> float | None:
     return round(sum(values) / len(values), 2) if values else None
 
 
-def rows(results: str | Path = "results") -> list[dict]:
+def rows(results: str | Path = "results", jobs: dict[str, str] | None = None) -> list[dict]:
     """One row per (model, fraction): metrics (mean, std, n) per period and horizon, and the mean cost of its cells."""
     results = Path(results)
+    jobs = {**BASE_JOBS, **(jobs or {})}
     table = json.loads((results / "ex_grid.json").read_text())
     out = []
     for model, spec in grid.MODELS.items():
@@ -84,8 +91,9 @@ def rows(results: str | Path = "results") -> list[dict]:
         for period in ("val", "test"):
             if period in rec:
                 row[period] = _period_from_scores(rec[period])
-        if rec.get("slurm_job_id"):
-            acct = grid.sacct(rec["slurm_job_id"])
+        job = jobs.get(name) or rec.get("slurm_job_id")
+        if job:
+            acct = grid.sacct(job)
             if acct:
                 row["su"] = acct["su"]
         out.append(row)
@@ -153,9 +161,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--results", default="results")
     ap.add_argument("--out", default="docs/analysis/ex03_tables.md")
+    ap.add_argument("--job", action="append", default=[], metavar="NAME=JOBID", help="Slurm job id of a base run whose record has none")
     a = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
-    rows_ = rows(a.results)
+    rows_ = rows(a.results, dict(j.split("=", 1) for j in a.job))
     su_total = json.loads((Path(a.results) / "ex_grid.json").read_text())["su_total"]
     Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     Path(a.out).write_text(report(rows_, su_total))
