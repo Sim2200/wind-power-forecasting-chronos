@@ -1,0 +1,86 @@
+{
+  "model": "output/chronos/ex_chronos_lora_25pct_s2023/run-0/checkpoint-final",
+  "context": "nan",
+  "periods": [
+    "val",
+    "test"
+  ],
+  "num_samples": 20,
+  "parameters": {
+    "total": 46154240,
+    "trainable": 46154240
+  },
+  "device": "cuda",
+  "gpu": "Tesla V100-SXM2-32GB",
+  "slurm_job_id": "24153883",
+  "train_seconds": 194.0,
+  "train_config": "configs/chronos_lora_25pct_lr1e-5_nan.yaml",
+  "train_info": {
+    "rank": 8,
+    "alpha": 16,
+    "dropout": 0.05,
+    "targets": [
+      "q",
+      "k",
+      "v",
+      "o"
+    ],
+    "trainable_parameters": 589824,
+    "base_parameters": 46154240,
+    "trainable_fraction": 0.012779410949026569,
+    "config": "configs/chronos_lora_25pct_lr1e-5_nan.yaml"
+  },
+  "inference_seconds": 1236.1,
+  "val": {
+    "6": {
+      "mae": 111.60651558203435,
+      "rmse": 186.82816274392852,
+      "mase": 0.26648243285901035,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.23404908240955372
+    },
+    "36": {
+      "mae": 249.52772570040148,
+      "rmse": 391.3142578825949,
+      "mase": 0.5952114221262151,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.5260703898669444
+    },
+    "64": {
+      "mae": 294.81177578045873,
+      "rmse": 441.9543796370492,
+      "mase": 0.7019499572067954,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.6176578500474074
+    }
+  },
+  "test": {
+    "6": {
+      "mae": 99.18915484109995,
+      "rmse": 160.8650421762047,
+      "mase": 0.23846507152003776,
+      "mase_turbines": 134,
+      "n_valid": 111463,
+      "wql": 0.19029907703343574
+    },
+    "36": {
+      "mae": 198.53852550906814,
+      "rmse": 303.53061676550715,
+      "mase": 0.4733042191228925,
+      "mase_turbines": 134,
+      "n_valid": 692237,
+      "wql": 0.37329612229102266
+    },
+    "64": {
+      "mae": 247.52978574532304,
+      "rmse": 371.3721256342768,
+      "mase": 0.5892041558464615,
+      "mase_turbines": 134,
+      "n_valid": 1230308,
+      "wql": 0.46288990931170115
+    }
+  }
+}
