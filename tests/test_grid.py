@@ -49,3 +49,14 @@ def test_submit_commands_and_missing_only(tmp_path):
     assert grid.array_spec([4]) == "4" and grid.array_spec([3, 4, 5]) == "3-5"
     with pytest.raises(ValueError):
         grid.array_spec([])
+
+
+def test_slurm_job_id_names_the_array_task(monkeypatch):
+    for var in ("SLURM_JOB_ID", "SLURM_ARRAY_JOB_ID", "SLURM_ARRAY_TASK_ID"):
+        monkeypatch.delenv(var, raising=False)
+    assert grid.slurm_job_id() is None
+    monkeypatch.setenv("SLURM_JOB_ID", "24152616")
+    assert grid.slurm_job_id() == "24152616"
+    monkeypatch.setenv("SLURM_ARRAY_JOB_ID", "24152616")
+    monkeypatch.setenv("SLURM_ARRAY_TASK_ID", "45")
+    assert grid.slurm_job_id() == "24152616_45"

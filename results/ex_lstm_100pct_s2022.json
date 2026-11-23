@@ -1,0 +1,164 @@
+{
+  "config": {
+    "clean_path": "data/sdwpf/clean.parquet",
+    "splits_path": "results/ds02_splits.json",
+    "fraction": 1.0,
+    "pred_len": 64,
+    "model_type": "lstm",
+    "quantiles": [
+      0.1,
+      0.2,
+      0.3,
+      0.4,
+      0.5,
+      0.6,
+      0.7,
+      0.8,
+      0.9
+    ],
+    "train_stride": 6,
+    "model": {
+      "hidden_size": 128,
+      "n_layers": 2,
+      "dropout": 0.2
+    },
+    "batch_size": 128,
+    "eval_batch_size": 1024,
+    "learning_rate": 0.0001,
+    "epochs": 30,
+    "patience": 5,
+    "seed": 2022,
+    "num_workers": 0,
+    "device": "cuda"
+  },
+  "model_type": "lstm",
+  "model": {
+    "seq_len": 288,
+    "pred_len": 64,
+    "n_vars": 1,
+    "hidden_size": 128,
+    "n_layers": 2,
+    "dropout": 0.2,
+    "revin": true,
+    "revin_affine": false,
+    "n_quantiles": 9
+  },
+  "parameters": 273472,
+  "train_windows": 529491,
+  "scaler": {
+    "mean": 464.0857238769531,
+    "std": 432.2677001953125
+  },
+  "loss": "pinball",
+  "best_val_loss": 0.2391519844532013,
+  "best_epoch": 2,
+  "epochs_run": 7,
+  "train_seconds": 318.5,
+  "inference_seconds": 1.1,
+  "gpu": "Tesla V100-SXM2-32GB",
+  "slurm_job_id": "24153590",
+  "val": {
+    "6": {
+      "mae": 113.88795814908413,
+      "rmse": 179.19203026385455,
+      "mase": 0.27182728367069864,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.23023564158999343
+    },
+    "36": {
+      "mae": 228.2842709388077,
+      "rmse": 337.2310023218197,
+      "mase": 0.5433634714608464,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.44338828876030423
+    },
+    "64": {
+      "mae": 259.4470476830524,
+      "rmse": 371.86635793637674,
+      "mase": 0.6166763967380431,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.5049701736046197
+    }
+  },
+  "test": {
+    "6": {
+      "mae": 108.30520190667688,
+      "rmse": 164.25424747972855,
+      "mase": 0.25982010816857537,
+      "mase_turbines": 134,
+      "n_valid": 111463,
+      "wql": 0.2047811719091328
+    },
+    "36": {
+      "mae": 211.3465280122714,
+      "rmse": 301.69857641686957,
+      "mase": 0.5032986870052987,
+      "mase_turbines": 134,
+      "n_valid": 692237,
+      "wql": 0.3801352887511615
+    },
+    "64": {
+      "mae": 257.0772756014319,
+      "rmse": 360.95439174139017,
+      "mase": 0.6117484640320022,
+      "mase_turbines": 134,
+      "n_valid": 1230308,
+      "wql": 0.4589873114570696
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.270758534769025,
+      "val_loss": 0.2406526803970337,
+      "lr": 0.0001,
+      "seconds": 45.8
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.25393349151316186,
+      "val_loss": 0.2391519844532013,
+      "lr": 0.0001,
+      "seconds": 91.2
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.24942592126488455,
+      "val_loss": 0.24033144116401672,
+      "lr": 0.0001,
+      "seconds": 136.7
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.244095291344294,
+      "val_loss": 0.24378110468387604,
+      "lr": 9e-05,
+      "seconds": 182.1
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.2372575682413186,
+      "val_loss": 0.25391122698783875,
+      "lr": 8.1e-05,
+      "seconds": 227.6
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.2305861865989936,
+      "val_loss": 0.2571958303451538,
+      "lr": 7.290000000000001e-05,
+      "seconds": 273.1
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.223849091815764,
+      "val_loss": 0.2617637515068054,
+      "lr": 6.561e-05,
+      "seconds": 318.5
+    }
+  ],
+  "device": "cuda"
+}

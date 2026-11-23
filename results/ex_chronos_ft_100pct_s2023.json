@@ -1,0 +1,72 @@
+{
+  "model": "output/chronos/ex_chronos_ft_100pct_s2023/run-0/checkpoint-final",
+  "context": "nan",
+  "periods": [
+    "val",
+    "test"
+  ],
+  "num_samples": 20,
+  "parameters": {
+    "total": 46154240,
+    "trainable": 46154240
+  },
+  "device": "cuda",
+  "gpu": "Tesla V100-SXM2-32GB",
+  "slurm_job_id": "24157805",
+  "train_seconds": 206.0,
+  "train_config": "configs/chronos_ft_100pct_lr1e-5_nan.yaml",
+  "train_info": null,
+  "inference_seconds": 1227.3,
+  "val": {
+    "6": {
+      "mae": 110.8524722220325,
+      "rmse": 185.34842425277472,
+      "mase": 0.26462917629018895,
+      "mase_turbines": 134,
+      "n_valid": 57879,
+      "wql": 0.23138107709017774
+    },
+    "36": {
+      "mae": 249.5555234542043,
+      "rmse": 393.5455426897742,
+      "mase": 0.5953046409075216,
+      "mase_turbines": 134,
+      "n_valid": 345159,
+      "wql": 0.5214519829454045
+    },
+    "64": {
+      "mae": 296.77509441840675,
+      "rmse": 447.95247337964526,
+      "mase": 0.7066280030897868,
+      "mase_turbines": 134,
+      "n_valid": 616900,
+      "wql": 0.6154720138244311
+    }
+  },
+  "test": {
+    "6": {
+      "mae": 97.83707221002238,
+      "rmse": 159.27113862692235,
+      "mase": 0.23529415324463596,
+      "mase_turbines": 134,
+      "n_valid": 111463,
+      "wql": 0.18706480049901428
+    },
+    "36": {
+      "mae": 193.80510478575798,
+      "rmse": 297.3083500644804,
+      "mase": 0.4624992601746917,
+      "mase_turbines": 134,
+      "n_valid": 692237,
+      "wql": 0.3623187749510148
+    },
+    "64": {
+      "mae": 240.0786965259096,
+      "rmse": 362.1510321417547,
+      "mase": 0.5723850821696836,
+      "mase_turbines": 134,
+      "n_valid": 1230308,
+      "wql": 0.4456808007329327
+    }
+  }
+}

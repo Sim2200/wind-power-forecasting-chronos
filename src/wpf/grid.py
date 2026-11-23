@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import shlex
 import shutil
 import subprocess
@@ -147,6 +148,15 @@ def submit_commands(missing_only: bool = False, output: str | Path = "output", s
 
 
 HORIZONS = ("6", "36", "64")
+
+
+def slurm_job_id() -> str | None:
+    """The id sacct knows this job by: ARRAYJOB_TASK for an array task (the last task of an array shares SLURM_JOB_ID
+    with the array itself, so the bare id would match every task), else SLURM_JOB_ID; None outside Slurm."""
+    array, task = os.environ.get("SLURM_ARRAY_JOB_ID"), os.environ.get("SLURM_ARRAY_TASK_ID")
+    if array and task:
+        return f"{array}_{task}"
+    return os.environ.get("SLURM_JOB_ID")
 
 
 def sacct(job_id: str) -> dict | None:
