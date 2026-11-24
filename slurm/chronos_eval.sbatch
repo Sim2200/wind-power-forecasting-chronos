@@ -2,6 +2,7 @@
 # Score a Chronos checkpoint on the shared validation windows without training (zero-shot, or a saved checkpoint).
 #   MODEL=amazon/chronos-t5-small NAME=chronos_small_zeroshot sbatch slurm/chronos_eval.sbatch
 #   CONTEXT=nan and PERIODS="val test" override the defaults. The model must already be in the HF cache.
+#   TRAIN_SECONDS and TRAIN_CONFIG, when set, are recorded as is (rescoring a fine-tuned checkpoint).
 #SBATCH --job-name=chronos_eval
 #SBATCH --account=msml612-class
 #SBATCH --partition=gpu
@@ -22,4 +23,4 @@ CONTEXT="${CONTEXT:-keep}"
 PERIODS="${PERIODS:-val}"
 echo "$NAME: $MODEL on $(hostname), GPU: $(nvidia-smi --query-gpu=name --format=csv,noheader), context $CONTEXT, periods $PERIODS"
 python -m wpf.chronos_eval --model "$MODEL" --name "$NAME" --context "$CONTEXT" --periods $PERIODS \
-    --out "output/${NAME}.json" --results results/
+    --out "output/${NAME}.json" --results results/ ${TRAIN_SECONDS:+--train-seconds "$TRAIN_SECONDS"} ${TRAIN_CONFIG:+--train-config "$TRAIN_CONFIG"}
