@@ -69,7 +69,9 @@ Chronos leads (test, every horizon), fine-tuning widens the lead by 2 to 4%, LoR
 
 `scripts/analysis/test_breakdown.py` writes `results/ex03_test_breakdown.json`: MASE per test week (7 weeks of 7 days, mean over
 the seeds) and, for the 100% rows, zero-shot and persistence, a 95% interval from 1000 bootstrap resamples of the forecast
-origins (first seed of each cell), with the paired interval of the difference to zero-shot Chronos.
+origins (first seed of each cell), with the paired interval of the difference to zero-shot Chronos. `scripts/analysis/plot_findings.py`
+draws the three figures of this section from the JSON files: `docs/figures/ex03_weekly.png` (test MASE per week), `ex03_bootstrap.png`
+(the paired differences with their intervals, validation and test) and `ex03_two_periods.png` (the two held-out periods side by side).
 
 - **The validation lead of the from-scratch models is real at H = 64 and marginal at H = 36.** PatchTST against zero-shot on
   validation: −0.072 at H = 64 with interval [−0.124, −0.017]; the LSTM −0.081 [−0.121, −0.038]. At H = 36 the PatchTST interval
