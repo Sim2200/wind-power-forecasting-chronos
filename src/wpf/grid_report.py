@@ -43,7 +43,7 @@ BASE_RUNS = {  # CF-03 and CF-06 single-seed records outside the grid: (model ke
 }
 
 
-BASE_JOBS = {"chronos_base_zeroshot_nan": "24123439", "chronos_ft_base_5pct_nan_g2": "24123428"}  # CF-03 jobs (no id in the record)
+BASE_JOBS = {"chronos_ft_base_5pct_nan_g2": "24123428"}  # the CF-03 job whose record has no id; the zero-shot record was rescored (val and test) in one job
 
 
 def _stat(mean: float | None, std: float | None = None, n: int = 1) -> dict:

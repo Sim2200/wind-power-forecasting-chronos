@@ -58,10 +58,11 @@ Chronos leads (test, every horizon), fine-tuning widens the lead by 2 to 4%, LoR
 - **One model per horizon** (the paper's practice, PT-03): with the lr 1e-4 recipe, separate H = 6 and H = 36 models score 0.273 and
   0.569 on validation against 0.275 and 0.568 for the shared H = 64 head trained the same way (0.226 / 0.463 against 0.228 / 0.465
   on test). The shared head loses nothing at the short horizons, which is why the grid uses one model.
-- **Chronos-T5-base** (201M) is 0.263 / 0.590 / 0.696 zero-shot on validation, 0.004 better than small at the long horizons for
-  three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). Fine-tuned at 100% on 2 GPUs (CF-06) it
+- **Chronos-T5-base** (201M) is 0.263 / 0.590 / 0.696 zero-shot on validation and 0.239 / 0.476 / 0.599 on test: 0.004 better
+  than small at the long horizons on validation and no better on test, for three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). Fine-tuned at 100% on 2 GPUs (CF-06) it
   scores 0.261 / 0.587 / 0.697 on validation and 0.233 / 0.457 / 0.568 on test: the best Chronos run on both splits, 0.002 to 0.003
-  ahead of its own zero-shot on validation and level with persistence on test (0.235 / 0.458 / 0.564). It costs 31 SU per run (3.5 SU
+  ahead of its own zero-shot on validation, 0.006 / 0.019 / 0.031 ahead of it on test (3 to 5% at H = 36 and 64, the largest
+  fine-tuning gain of the project) and level with persistence on test (0.235 / 0.458 / 0.564). It costs 31 SU per run (3.5 SU
   of training on 2 V100s, then 69 minutes of sampling) against 4.8 SU for the small model: 2 to 4% at H = 36 and 64 on test for six
   times the compute.
 
