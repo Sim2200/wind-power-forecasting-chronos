@@ -89,10 +89,11 @@ draws the three figures of this section from the JSON files: `docs/figures/ex03_
   by 25 days, so days 171 to 196, the grid's validation months, become a test period. PatchTST and the LSTM are retrained on the
   first 146 days with early stopping on days 146 to 171; Chronos needs no retraining, since nothing of its was chosen on those
   days, and its grid validation forecasts are rescored on the fold's MASE scale: zero-shot 0.264 / 0.587 / 0.690, full fine-tune
-  100% 0.261 / 0.587 / 0.698, LoRA 0.263 / 0.588 / 0.694. PatchTST retrained on the 146 days scores 0.277 / 0.543 / 0.613 on the
-  fold's test days and the LSTM 0.266 / 0.536 / 0.611 (`results/fold2_{patchtst,lstm}_100pct_{val,test}.json`, seed 2021): 11 to 12%
-  ahead of every Chronos variant at H = 64 and 7 to 9% at H = 36, with 25 fewer days of training data and nothing selected on those
-  days (early stopping used days 146 to 171, where PatchTST scored 0.322 / 0.517 / 0.590 and the LSTM 0.304 / 0.487 / 0.563). The
+  100% 0.261 / 0.587 / 0.698, LoRA 0.263 / 0.588 / 0.694. PatchTST retrained on the 146 days scores 0.271 ± 0.005 / 0.547 ± 0.003 /
+  0.620 ± 0.007 on the fold's test days and the LSTM 0.270 ± 0.004 / 0.536 ± 0.001 / 0.612 ± 0.004 (three seeds,
+  `results/fold2_{patchtst,lstm}_100pct[_s2022|_s2023]_{val,test}.json`): 10 to 11% ahead of every Chronos variant at H = 64 and 7 to 9%
+  at H = 36, with 25 fewer days of training data and nothing selected on those days (early stopping used days 146 to 171, where
+  PatchTST scored 0.316 / 0.508 / 0.583 and the LSTM 0.309 / 0.491 / 0.566). The
   lead the from-scratch models had on days 171 to 196 was not selection; it is the period.
 - **So the project has two held-out periods, and they disagree.** On days 171 to 196 the from-scratch models beat Chronos and
   persistence by about 10% at the long horizons, whether those days are the validation split (grid) or a test split nothing was
@@ -113,8 +114,8 @@ draws the three figures of this section from the JSON files: `docs/figures/ex03_
 4. **The grid is larger than the interim report's 27 runs**: PatchTST point and the LSTM were added at every fraction and seed
    (46 cells). Every cell ran on one V100 so the SU figures are comparable; the grid cost 107.8 SU.
 5. **Chronos-T5-base was run at 5% (CF-03) and 100% (CF-06) only**, one seed each, as the proposal's optional item.
-6. **The second held-out period is 25 days** (fold 2, days 171 to 196) against 49 for the grid's test (days 196 to 245), and
-   fold 2 has one seed per from-scratch model. The two periods disagree on the ranking (above), so the report presents two
+6. **The second held-out period is 25 days** (fold 2, days 171 to 196) against 49 for the grid's test (days 196 to 245); the
+   from-scratch models ran three seeds on it, the Chronos variants are the grid's single-seed forecasts rescored. The two periods disagree on the ranking (above), so the report presents two
    periods, not one test.
 7. **The CF-06 rows are single runs.** The 200- and 500-step rows and the base 100% row are one seed each; the sweep checkpoints
    were scored twice, first with the filled context by mistake (`--context keep`) and then with the grid's `--context nan`, and
