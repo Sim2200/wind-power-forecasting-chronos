@@ -1,0 +1,41 @@
+{
+  "train": {
+    "steps": 24624,
+    "valid_share": 0.7725,
+    "patv_mean_kw": 464.1,
+    "patv_std_kw": 432.3,
+    "wspd_mean": 5.89,
+    "abs_change_kw": {
+      "1": 86.9,
+      "6": 188.7,
+      "36": 353.0,
+      "64": 392.6
+    }
+  },
+  "val": {
+    "steps": 3600,
+    "valid_share": 0.7255,
+    "patv_mean_kw": 410.6,
+    "patv_std_kw": 397.0,
+    "wspd_mean": 5.22,
+    "abs_change_kw": {
+      "1": 60.4,
+      "6": 154.2,
+      "36": 335.4,
+      "64": 415.9
+    }
+  },
+  "test": {
+    "steps": 7056,
+    "valid_share": 0.7372,
+    "patv_mean_kw": 449.4,
+    "patv_std_kw": 447.0,
+    "wspd_mean": 5.26,
+    "abs_change_kw": {
+      "1": 52.8,
+      "6": 127.9,
+      "36": 270.5,
+      "64": 341.8
+    }
+  }
+}
