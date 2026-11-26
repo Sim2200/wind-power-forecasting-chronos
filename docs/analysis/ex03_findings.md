@@ -30,8 +30,12 @@ Fine-tuning changes little. On validation the three Chronos variants sit within 
 horizon, and LoRA r8 (0.59M trainable parameters) is indistinguishable from zero-shot (0.265 / 0.593 / 0.698 against 0.267 / 0.593 /
 0.698). Full fine-tuning at 25% and 100% is at zero-shot level on validation and is the best Chronos variant on test (0.236 / 0.461 /
 0.569 at 25%, a 2 to 4% gain over zero-shot). Full fine-tuning at 5% is the exception: it is worse than zero-shot at H = 36 and 64
-(0.623 / 0.733 on validation, 0.531 / 0.674 on test), while LoRA at 5% is not. Seven turbines for 1000 full-parameter steps look
-like long-horizon overfitting; CF-06 (#63) checks it with 200 and 500 steps.
+(0.623 / 0.733 on validation, 0.531 / 0.674 on test), while LoRA at 5% is not. The CF-06 step sweep (#63) shows the damage growing with the number of steps: the same 5% recipe
+stopped at 200 steps scores 0.264 / 0.596 / 0.702 on validation and 0.239 / 0.487 / 0.611 on test, at 500 steps 0.263 / 0.604 / 0.710
+and 0.240 / 0.503 / 0.635, at 1000 steps 0.623 / 0.733 and 0.531 / 0.674 at H = 36 / 64. Fewer steps bring the model back towards
+zero-shot (0.593 / 0.698 and 0.473 / 0.590) and never past it: full fine-tuning on seven turbines has nothing to add, and every
+step costs long-horizon accuracy. The same 1000 steps do no harm at 25% and 100%, so the damage comes from the sample, not the
+schedule.
 
 The question asked about the gap in either direction, and the answer has both. In the direction where PatchTST leads (validation,
 H = 36 and 64), adapting Chronos closes none of it: PatchTST stays 7 to 10% ahead of every Chronos variant. In the direction where
@@ -55,8 +59,11 @@ Chronos leads (test, every horizon), fine-tuning widens the lead by 2 to 4%, LoR
   0.569 on validation against 0.275 and 0.568 for the shared H = 64 head trained the same way (0.226 / 0.463 against 0.228 / 0.465
   on test). The shared head loses nothing at the short horizons, which is why the grid uses one model.
 - **Chronos-T5-base** (201M) is 0.263 / 0.590 / 0.696 zero-shot on validation, 0.004 better than small at the long horizons for
-  three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). CF-06 adds the
-  100% row.
+  three times the inference time; fine-tuned at 5% on 2 GPUs it shows the same 5% penalty as small (0.613 / 0.719). Fine-tuned at 100% on 2 GPUs (CF-06) it
+  scores 0.261 / 0.587 / 0.697 on validation and 0.233 / 0.457 / 0.568 on test: the best Chronos run on both splits, 0.002 to 0.003
+  ahead of its own zero-shot on validation and level with persistence on test (0.235 / 0.458 / 0.564). It costs 31 SU per run (3.5 SU
+  of training on 2 V100s, then 69 minutes of sampling) against 4.8 SU for the small model: 2 to 4% at H = 36 and 64 on test for six
+  times the compute.
 
 ## How solid is the reversal? Weeks, confidence intervals and a second fold
 
@@ -80,9 +87,18 @@ origins (first seed of each cell), with the paired interval of the difference to
   by 25 days, so days 171 to 196, the grid's validation months, become a test period. PatchTST and the LSTM are retrained on the
   first 146 days with early stopping on days 146 to 171; Chronos needs no retraining, since nothing of its was chosen on those
   days, and its grid validation forecasts are rescored on the fold's MASE scale: zero-shot 0.264 / 0.587 / 0.690, full fine-tune
-  100% 0.261 / 0.587 / 0.698, LoRA 0.263 / 0.588 / 0.694. The PatchTST and LSTM fold-2 scores are filled in when their jobs
-  finish. If they land near Chronos instead of the 0.551 / 0.628 they reached when selected on those same days, the validation lead
-  was selection, and the whole project reads as "nothing beats zero-shot Chronos or persistence out of sample on this farm".
+  100% 0.261 / 0.587 / 0.698, LoRA 0.263 / 0.588 / 0.694. PatchTST retrained on the 146 days scores 0.277 / 0.543 / 0.613 on the
+  fold's test days and the LSTM 0.266 / 0.536 / 0.611 (`results/fold2_{patchtst,lstm}_100pct_{val,test}.json`, seed 2021): 11 to 12%
+  ahead of every Chronos variant at H = 64 and 7 to 9% at H = 36, with 25 fewer days of training data and nothing selected on those
+  days (early stopping used days 146 to 171, where PatchTST scored 0.322 / 0.517 / 0.590 and the LSTM 0.304 / 0.487 / 0.563). The
+  lead the from-scratch models had on days 171 to 196 was not selection; it is the period.
+- **So the project has two held-out periods, and they disagree.** On days 171 to 196 the from-scratch models beat Chronos and
+  persistence by about 10% at the long horizons, whether those days are the validation split (grid) or a test split nothing was
+  chosen on (fold 2). On days 196 to 245 Chronos and persistence beat them by 2 to 7%, and nothing beats persistence. The honest
+  conclusion is that on this farm the ranking of the model families depends on the regime of the period: persistence and zero-shot
+  Chronos are a floor no model falls far below in either period, and the from-scratch models are the only ones that beat that
+  floor by a wide margin in any period, and the only ones that fall below it in the other. The report presents both periods; a
+  single test split, either one, would have told a wrong story.
 
 ## Caveats the report must state
 
@@ -95,6 +111,12 @@ origins (first seed of each cell), with the paired interval of the difference to
 4. **The grid is larger than the interim report's 27 runs**: PatchTST point and the LSTM were added at every fraction and seed
    (46 cells). Every cell ran on one V100 so the SU figures are comparable; the grid cost 107.8 SU.
 5. **Chronos-T5-base was run at 5% (CF-03) and 100% (CF-06) only**, one seed each, as the proposal's optional item.
-6. **PatchTST point versus quantile.** The point head (MSE) is worse than the quantile head's median at every fraction on
+6. **The second held-out period is 25 days** (fold 2, days 171 to 196) against 49 for the grid's test (days 196 to 245), and
+   fold 2 has one seed per from-scratch model. The two periods disagree on the ranking (above), so the report presents two
+   periods, not one test.
+7. **The CF-06 rows are single runs.** The 200- and 500-step rows and the base 100% row are one seed each; the sweep checkpoints
+   were scored twice, first with the filled context by mistake (`--context keep`) and then with the grid's `--context nan`, and
+   the tables carry the second scoring. Their SU per run is the rescoring job plus the training time shown.
+8. **PatchTST point versus quantile.** The point head (MSE) is worse than the quantile head's median at every fraction on
    validation except 5% (0.369 / 0.654 / 0.727 against 0.395 / 0.725 / 0.794), where the pinball loss on seven turbines is the harder
    fit; with full data the quantile model is 1 to 2% better and also gives the WQL.

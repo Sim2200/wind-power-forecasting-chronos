@@ -20,6 +20,11 @@ def test_rows_cover_the_grid_and_the_baselines():
     assert zero["n_runs"] == 1 and zero["train_seconds"] is None and zero["val"]["6"]["mase"]["std"] is None
     point = next(r for r in rows if r["model"] == "patchtst_point" and r["pct"] == 5)
     assert "wql" not in point["val"]["6"]
+    for key in (("chronos_base_ft", 100), ("chronos_ft_200", 5), ("chronos_ft_500", 5)):  # CF-06 single-seed rows
+        assert key in keys
+    base100 = next(r for r in rows if r["model"] == "chronos_base_ft" and r["pct"] == 100)
+    assert base100["gpus"] == 2 and base100["n_runs"] == 1 and "test" in base100
+    assert next(r for r in rows if r["model"] == "chronos_ft_200")["gpus"] == 1
 
 
 def test_fmt_and_tables():

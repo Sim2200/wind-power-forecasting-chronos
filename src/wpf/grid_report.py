@@ -27,15 +27,19 @@ METRICS = ("mase", "wql", "mae")
 LABELS = {"patchtst": "PatchTST (quantile)", "patchtst_point": "PatchTST (point)", "lstm": "LSTM",
           "chronos_ft": "Chronos-small, full fine-tune", "chronos_lora": "Chronos-small, LoRA r8",
           "chronos_zeroshot": "Chronos-small, zero-shot", "chronos_base_ft": "Chronos-base, full fine-tune (2 GPUs)",
-          "chronos_base_zeroshot": "Chronos-base, zero-shot", "persistence": "Persistence", "seasonal_naive": "Seasonal naive (1 day)",
+          "chronos_base_zeroshot": "Chronos-base, zero-shot",
+          "chronos_ft_200": "Chronos-small, full fine-tune, 200 steps (CF-06, seed 2021)",
+          "chronos_ft_500": "Chronos-small, full fine-tune, 500 steps (CF-06, seed 2021)", "persistence": "Persistence", "seasonal_naive": "Seasonal naive (1 day)",
           "patchtst_per_horizon": "PatchTST (quantile), one model per horizon (PT-03, lr 1e-4, seed 2021)",
           "patchtst_shared_lr1e-4": "PatchTST (quantile), shared head, same recipe (PT-03, lr 1e-4, seed 2021)"}
 PER_HORIZON_RUNS = {"6": "pt03_100pct_h6", "36": "pt03_100pct_h36"}  # the paper's practice, one model per horizon; H = 64 is the shared head
 SHARED_LR1E4_RUN = "pt03_100pct"  # the shared head trained with the same lr 1e-4 recipe, the per-horizon rows' pair
-BASE_RUNS = {  # CF-03 and CF-06 records outside the grid: (model key, fraction, record name); test exists only where PERIODS had it
+BASE_RUNS = {  # CF-03 and CF-06 single-seed records outside the grid: (model key, fraction, record name); test exists only where PERIODS had it
     ("chronos_base_zeroshot", None): "chronos_base_zeroshot_nan",
     ("chronos_base_ft", 5): "chronos_ft_base_5pct_nan_g2",
     ("chronos_base_ft", 100): "chronos_ft_base_100pct_nan_g2",
+    ("chronos_ft_200", 5): "chronos_ft_5pct_lr1e-5_nan_200",  # CF-06 step sweep: the grid's 5% recipe stopped early
+    ("chronos_ft_500", 5): "chronos_ft_5pct_lr1e-5_nan_500",
 }
 
 
@@ -97,7 +101,7 @@ def rows(results: str | Path = "results", jobs: dict[str, str] | None = None) ->
         rec = json.loads(record.read_text())
         row = {"model": model, "label": LABELS[model], "pct": pct, "n_runs": 1, "su": None, "train_su": None,
                "trainable_parameters": rec["parameters"]["trainable"], "train_seconds": rec.get("train_seconds"),
-               "inference_seconds": rec.get("inference_seconds"), "gpus": 2 if rec.get("train_seconds") else 1}
+               "inference_seconds": rec.get("inference_seconds"), "gpus": 2 if "_g2" in name else 1}
         for period in ("val", "test"):
             if period in rec:
                 row[period] = _period_from_scores(rec[period])
