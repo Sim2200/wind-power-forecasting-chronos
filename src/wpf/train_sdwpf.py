@@ -32,9 +32,10 @@ import torch
 from torch.utils.data import DataLoader
 
 from wpf import grid, score_sdwpf
-from wpf.data import sdwpf, sdwpf_windows, splits
+from wpf.data import sdwpf, sdwpf_windows, spatial, splits
 from wpf.models.lstm import LSTMConfig, LSTMForecaster
 from wpf.models.patchtst import PatchTST, PatchTSTConfig
+from wpf.models.spatial_patchtst import SpatialPatchTST, SpatialPatchTSTConfig
 from wpf.train import EarlyStopping, lr_type3, set_seed
 
 _LOG = logging.getLogger(__name__)
@@ -46,7 +47,9 @@ class TrainConfig:
     splits_path: str = "results/ds02_splits.json"
     fraction: float = 1.0  # training subset: 0.05, 0.25 or 1.0
     pred_len: int = 64
-    model_type: str = "patchtst"  # or "lstm" (DS-06 baseline); `model` holds that class's config overrides
+    model_type: str = "patchtst"  # "lstm" (DS-06 baseline) or "patchtst_spatial" (PT-05); `model` holds that class's config overrides
+    neighbours: int = 0  # patchtst_spatial: k nearest turbines added as input channels (wpf.data.spatial)
+    locations_path: str = "data/sdwpf/turbine_locations.parquet"
     quantiles: list[float] | None = None  # e.g. [0.1, ..., 0.9]: quantile head + pinball loss; None: point head + MSE
     train_stride: int = 1  # origins every n steps inside the subset; raise it to cut epoch cost
     model: dict = field(default_factory=dict)  # overrides for `PatchTSTConfig` or `LSTMConfig`
@@ -67,6 +70,7 @@ class Data:
     valid: np.ndarray
     scaler: sdwpf_windows.Scaler
     split: splits.Split
+    neighbours: np.ndarray | None = None  # (turbines, k) for the spatial model
 
 
 def load_data(cfg: TrainConfig) -> Data:
@@ -79,7 +83,20 @@ def load_data(cfg: TrainConfig) -> Data:
         raise ValueError(f"{cfg.clean_path} has {patv.shape[1]} steps per turbine, the split expects {split.n_steps}")
     scaler = sdwpf_windows.fit_scaler(patv, valid, splits.subset_range(split, cfg.fraction))
     series = scaler.transform(sdwpf_windows.fill_missing(patv)).astype(np.float32)
-    return Data(series=series, patv=patv.astype(np.float64), valid=valid, scaler=scaler, split=split)
+    neighbours = None
+    if cfg.neighbours:
+        loc = sdwpf.load_clean(cfg.locations_path).sort_values("TurbID")
+        if len(loc) != patv.shape[0]:
+            raise ValueError(f"{cfg.locations_path} has {len(loc)} turbines, the series {patv.shape[0]}")
+        neighbours = spatial.nearest_neighbours(loc["x"].to_numpy(), loc["y"].to_numpy(), cfg.neighbours)
+    return Data(series=series, patv=patv.astype(np.float64), valid=valid, scaler=scaler, split=split, neighbours=neighbours)
+
+
+def eval_arrays(cfg: TrainConfig, data: Data, period: str) -> dict[str, np.ndarray]:
+    """The shared evaluation windows of `period`, with neighbour channels for the spatial model."""
+    if data.neighbours is not None:
+        return spatial.eval_arrays(data.series, data.valid, data.split, period, cfg.pred_len, data.neighbours)
+    return sdwpf_windows.eval_arrays(data.series, data.valid, data.split, period, cfg.pred_len)
 
 
 def masked_mse(pred: torch.Tensor, y: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -103,24 +120,28 @@ def median_index(quantiles: list[float]) -> int:
 
 def make_train_loader(cfg: TrainConfig, data: Data) -> DataLoader:
     index = sdwpf_windows.train_index(data.valid, data.split, cfg.fraction, cfg.pred_len, cfg.train_stride)
-    dataset = sdwpf_windows.SDWPFWindows(data.series, data.valid, index, cfg.pred_len)
+    if data.neighbours is not None:
+        dataset = spatial.SpatialWindows(data.series, data.valid, index, cfg.pred_len, data.neighbours)
+    else:
+        dataset = sdwpf_windows.SDWPFWindows(data.series, data.valid, index, cfg.pred_len)
     _LOG.info("training windows: %d (fraction %s, stride %d)", len(dataset), cfg.fraction, cfg.train_stride)
     return DataLoader(dataset, batch_size=cfg.batch_size, shuffle=True, drop_last=True, num_workers=cfg.num_workers)
 
 
 @torch.no_grad()
 def predict(model: torch.nn.Module, x: np.ndarray, batch_size: int, device: str) -> np.ndarray:
-    """Forecasts for x of shape (turbines, origins, L) in scaled units: (turbines, origins, H), or (..., H, Q) for a
-    quantile model."""
+    """Forecasts for x of shape (turbines, origins, L), or (turbines, origins, L, C) with neighbour channels, in scaled
+    units: (turbines, origins, H), or (..., H, Q) for a quantile model."""
     model.eval()
-    flat = torch.from_numpy(x.reshape(-1, x.shape[-1], 1))
+    flat = torch.from_numpy(x.reshape(-1, x.shape[-1], 1) if x.ndim == 3 else x.reshape(-1, *x.shape[-2:]))
     out = torch.cat([model(flat[i : i + batch_size].to(device)).cpu() for i in range(0, len(flat), batch_size)])
     out = out[:, :, 0]  # drop the channel axis: (B, H) or (B, H, Q)
     return out.numpy().reshape(x.shape[0], x.shape[1], *out.shape[1:])
 
 
 
-MODELS = {"patchtst": (PatchTSTConfig, PatchTST), "lstm": (LSTMConfig, LSTMForecaster)}
+MODELS = {"patchtst": (PatchTSTConfig, PatchTST), "lstm": (LSTMConfig, LSTMForecaster),
+          "patchtst_spatial": (SpatialPatchTSTConfig, SpatialPatchTST)}
 
 
 def build_model_config(cfg: TrainConfig):
@@ -128,7 +149,10 @@ def build_model_config(cfg: TrainConfig):
     if cfg.model_type not in MODELS:
         raise ValueError(f"model_type must be one of {tuple(MODELS)}, got {cfg.model_type!r}")
     config_class, model_class = MODELS[cfg.model_type]
-    return config_class(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=1, n_quantiles=len(cfg.quantiles or ()), **cfg.model), model_class
+    if (cfg.model_type == "patchtst_spatial") != (cfg.neighbours > 0):
+        raise ValueError("patchtst_spatial needs neighbours > 0 and the other models neighbours = 0")
+    n_vars = 1 + cfg.neighbours
+    return config_class(seq_len=splits.LOOKBACK, pred_len=cfg.pred_len, n_vars=n_vars, n_quantiles=len(cfg.quantiles or ()), **cfg.model), model_class
 
 
 def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, save_pred: str | Path | None = None) -> dict:
@@ -137,7 +161,7 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     set_seed(cfg.seed)
     data = load_data(cfg)
     train_loader = make_train_loader(cfg, data)
-    val = sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "val", cfg.pred_len)
+    val = eval_arrays(cfg, data, "val")
     val_y, val_mask = torch.from_numpy(val["y"]), torch.from_numpy(val["mask"].astype(np.float32))
     quantiles = torch.tensor(cfg.quantiles, dtype=torch.float32, device=cfg.device) if cfg.quantiles else None
     if quantiles is not None:
@@ -179,7 +203,7 @@ def train(cfg: TrainConfig, log=print, save_weights: str | Path | None = None, s
     if save_weights is not None:
         torch.save(stopper.best_state, save_weights)
     scores, preds, inference_seconds = {}, {}, 0.0
-    for period, arrays in (("val", val), ("test", sdwpf_windows.eval_arrays(data.series, data.valid, data.split, "test", cfg.pred_len))):
+    for period, arrays in (("val", val), ("test", eval_arrays(cfg, data, "test"))):
         t1 = time.time()
         pred_scaled = predict(model, arrays["x"], cfg.eval_batch_size, cfg.device)
         inference_seconds += time.time() - t1
