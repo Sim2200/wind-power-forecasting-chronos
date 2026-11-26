@@ -36,3 +36,30 @@ def test_scratch_configs_are_the_recipe_without_pretrained_weights():
         assert scratch["random_init"] is True and scratch["learning_rate"] == value
         changed = {k for k in set(small) | set(scratch) if small.get(k) != scratch.get(k)}
         assert changed <= {"random_init", "learning_rate", "output_dir"}
+
+
+def test_step_sweep_configs_only_shorten_the_5pct_recipe():
+    small = _load("chronos_ft_5pct_lr1e-5_nan")
+    for steps in (200, 500):
+        short = _load(f"chronos_ft_5pct_lr1e-5_nan_{steps}")
+        assert short["max_steps"] == steps and short["save_steps"] <= steps
+        changed = {k for k in set(small) | set(short) if small.get(k) != short.get(k)}
+        assert "max_steps" in changed and changed <= {"max_steps", "save_steps", "output_dir"}
+
+
+def test_base_100pct_config_only_changes_the_data():
+    base5, base100 = _load("chronos_ft_base_5pct_nan"), _load("chronos_ft_base_100pct_nan")
+    assert base100["training_data_paths"] == ["data/sdwpf/chronos_nan/train_100pct.arrow"]
+    changed = {k for k in set(base5) | set(base100) if base5.get(k) != base100.get(k)}
+    assert changed == {"training_data_paths", "output_dir"}
+
+
+def test_sbatch_scores_nan_configs_and_their_step_variants_with_nan_context():
+    """`chronos_ft_5pct_lr1e-5_nan_200` must score with --context nan like the grid cell it is compared with."""
+    import re
+    import subprocess
+    text = (CONFIGS.parent / "slurm" / "chronos_ft.sbatch").read_text()
+    case = re.search(r'case "\$CFG" in (.*?) esac', text).group(0)
+    for cfg, expected in (("chronos_ft_5pct_lr1e-5_nan", "nan"), ("chronos_ft_5pct_lr1e-5_nan_200", "nan"), ("chronos_ft_5pct", "keep")):
+        out = subprocess.run(["bash", "-c", f'CFG={cfg}; {case}; echo $CONTEXT'], capture_output=True, text=True, check=True)
+        assert out.stdout.strip() == expected, (cfg, out.stdout)

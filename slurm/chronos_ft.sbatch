@@ -25,7 +25,7 @@ CFG="${CFG:-chronos_ft_smoke}"
 NAME="${NAME:-${CFG}${SEED:+_s$SEED}}"
 PERIODS="${PERIODS:-val}"
 CHRONOS_REPO="${CHRONOS_REPO:-$HOME/scratch.msml612/chronos-forecasting}"
-case "$CFG" in *_nan) CONTEXT=nan ;; *) CONTEXT=keep ;; esac
+case "$CFG" in *_nan|*_nan_*) CONTEXT=nan ;; *) CONTEXT=keep ;; esac
 echo "$NAME ($CFG${SEED:+, seed $SEED}) on $(hostname), GPU: $(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader), context $CONTEXT, periods $PERIODS"
 
 T0=$SECONDS
